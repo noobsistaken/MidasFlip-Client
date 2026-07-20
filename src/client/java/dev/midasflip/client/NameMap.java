@@ -1,0 +1,74 @@
+package dev.midasflip.client;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+
+import java.util.Locale;
+
+/**
+ * id → pretty display name, backed by /names (fetched once, cached 1h).
+ * Falls back to Title-Casing the id until the map arrives, so the board
+ * is never blank and stops showing raw FIG_LEGGINGS once data lands.
+ * Pets pretty-print from their bucket key ("Ender Dragon · leg pet").
+ *
+ * Static singleton: one client, many render sites.
+ */
+public final class NameMap {
+    private static MidasflipApi api;
+
+    private NameMap() {}
+
+    static void init(MidasflipApi a) {
+        api = a;
+    }
+
+    /** Pretty name for an item id, using the comp key for pet detail.
+     *  Accepts both bucket keys (v1|PET|TYPE|TIER|xN) and the value tab's
+     *  kat ids (PET:TYPE:TIER:xN). */
+    public static String pretty(String itemId, String compKey) {
+        if (itemId == null) {
+            return "?";
+        }
+        if (itemId.startsWith("PET:")) {
+            String[] p = itemId.split(":");
+            if (p.length >= 3) {
+                return titleCase(p[1]) + " pet §8(" + p[2].substring(0, 3).toLowerCase(Locale.ROOT) + ")§r";
+            }
+        }
+        if ("PET".equals(itemId) && compKey != null) {
+            String[] p = compKey.split("\\|");
+            if (p.length >= 4) {
+                return titleCase(p[2]) + " pet §8(" + p[3].substring(0, 3).toLowerCase(Locale.ROOT) + ")§r";
+            }
+        }
+        if (api != null) {
+            JsonElement el = api.get("/names", 60 * 60_000);
+            if (el != null && el.isJsonObject()) {
+                JsonObject map = el.getAsJsonObject();
+                if (map.has(itemId)) {
+                    return map.get(itemId).getAsString();
+                }
+            }
+        }
+        return titleCase(itemId);
+    }
+
+    public static String pretty(String itemId) {
+        return pretty(itemId, null);
+    }
+
+    private static String titleCase(String id) {
+        StringBuilder sb = new StringBuilder(id.length());
+        for (String part : id.split("_")) {
+            if (part.isEmpty()) {
+                continue;
+            }
+            if (!sb.isEmpty()) {
+                sb.append(' ');
+            }
+            sb.append(Character.toUpperCase(part.charAt(0)))
+                    .append(part.substring(1).toLowerCase(Locale.ROOT));
+        }
+        return sb.toString();
+    }
+}

@@ -1,0 +1,26 @@
+# build outputs
+.gradle/
+build/
+out/
+run/
+logs/
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# local agent/tooling state — must never enter public history
+.claude/
+.mcp.json
+.playwright-mcp/
+*.jpeg
+*.png.local
+
+# local secrets & runtime state (defense in depth; none should exist here)
+*.token
+.env

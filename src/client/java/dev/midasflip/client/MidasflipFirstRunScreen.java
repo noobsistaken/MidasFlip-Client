@@ -106,11 +106,19 @@ public final class MidasflipFirstRunScreen extends Screen {
 
     private void finish() {
         config.safetyMode = chosen;
-        if (config.save()) {
-            onClose();
-        } else {
+        if (!config.save()) {
             pairProblem = "couldn't save settings — check the config folder";
+            return;
         }
+        // First run only (parent == null): hand off to the tour once. It
+        // closes to the same place this screen would have. Re-pairing from
+        // Safety never replays it — that user has been here before, and
+        // About keeps the tour reachable on demand.
+        if (parent == null && TourScreen.Tour.shouldOpen(config.tourSeenVersion)) {
+            Minecraft.getInstance().setScreen(new TourScreen(null, config));
+            return;
+        }
+        onClose();
     }
 
     private void startPair() {

@@ -171,8 +171,8 @@ public final class MidasflipShellScreen extends PhosScreen {
         g.fill(SIDEBAR_W - 1, 0, SIDEBAR_W, height, Phos.BORDER);
         // Brand mark: FLIP rides the themeable accent so a Theme-tab swap
         // recolors it live. No § codes — they override the color param.
-        Phos.text(g, font, "SKY", 10, 12, Phos.CREAM);
-        Phos.text(g, font, "FLIP", 10 + font.width("SKY"), 12, Phos.ACCENT);
+        Phos.text(g, font, "MIDAS", 10, 12, Phos.CREAM);
+        Phos.text(g, font, "FLIP", 10 + font.width("MIDAS"), 12, Phos.ACCENT);
         Phos.text(g, font, "0.1.0 · fabric", 10, 24, Phos.FAINT);
 
         int y = 44;
@@ -1319,12 +1319,18 @@ public final class MidasflipShellScreen extends PhosScreen {
 
     private void about(GuiGraphicsExtractor g, int x, int w) {
         int y = 38;
-        Phos.text(g, font, "§fSKY§6FLIP§r §7— auction intelligence for SkyBlock§r", x, y, Phos.CREAM);
+        Phos.text(g, font, "§fMIDAS§6FLIP§r §7— auction intelligence for SkyBlock§r", x, y, Phos.CREAM);
         y += 16;
         Phos.text(g, font, "§7every flip shown with its work: comps, confidence, exits§r", x, y, Phos.DIM);
         y += 12;
         Phos.text(g, font, "§7open source · local-first ledger · human-executed§r", x, y, Phos.DIM);
-        y += 16;
+        y += 20;
+        // The first-run tour, on demand — it never reopens by itself.
+        chipButton(g, x, y, "replay tour", () ->
+                Minecraft.getInstance().setScreen(new TourScreen(this, config)));
+        Phos.text(g, font, "§8five cards: the board, tooltips, filters, your ledger§r",
+                x + Phos.w(font, "replay tour") + 20, y, Phos.FAINT);
+        y += 22;
         Phos.text(g, font, "§8not affiliated with hypixel or mojang§r", x, y, Phos.FAINT);
     }
 

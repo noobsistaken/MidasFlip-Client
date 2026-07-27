@@ -186,6 +186,11 @@ public final class MidasflipConfig {
     // the "bought X" toast lingers. clamp [1000,10000]. ----
     public int purchaseToastMs = 4000;
 
+    /** Highest first-run tour version this install finished or skipped
+     *  (0 = never shown). The tour opens once, off the first-run screen,
+     *  and stays replayable from About — see {@link TourScreen.Tour}. */
+    public int tourSeenVersion = 0;
+
     /** UI accent color (RGB, no alpha). Default = the shipped amber; the
      *  Theme tab writes this. Presets: amber D9944A, mint 45D48A. */
     public int accentColor = 0xD9944A;
@@ -403,6 +408,9 @@ public final class MidasflipConfig {
         commandCooldownMs = Math.min(Math.max(commandCooldownMs, 500), 60_000);
         marginAlertPct = Math.min(Math.max(marginAlertPct, 5), 200);
         petLevelPremiumFloor = Math.min(Math.max(petLevelPremiumFloor, 1), 200);
+        // Clamped to the tour that actually exists: a hand-edited or
+        // imported "999" must not silently suppress a future tour version.
+        tourSeenVersion = Math.min(Math.max(tourSeenVersion, 0), TourScreen.Tour.VERSION);
         if (customPresets == null) customPresets = new java.util.LinkedHashMap<>();
         customPresets.values().removeIf(java.util.Objects::isNull);
         if (familyTuning == null) familyTuning = new java.util.LinkedHashMap<>();

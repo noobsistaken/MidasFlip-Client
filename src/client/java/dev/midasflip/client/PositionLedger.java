@@ -70,7 +70,30 @@ public final class PositionLedger {
             Double total = curPessTotal();
             return total != null && Math.round(total) < buyPrice;
         }
+
+        /** True when we can no longer honestly claim you still hold this.
+         *
+         *  The server hands the client only the last 24 HOURS of sale
+         *  history (/listings/mine, LIMIT 10), so a sale that completes
+         *  while the mod is closed is invisible to reconciliation FOREVER
+         *  — the position stays "open" and nags about an item you sold
+         *  last week (owner report 2026-07-27). A currently-listed
+         *  position is confirmed by the live listing feed and never goes
+         *  unconfirmed; an unlisted one goes quiet after the window.
+         *
+         *  This suppresses ALERTS only. The row stays in the ledger,
+         *  labeled, because deleting it would silently rewrite your P&L. */
+        public boolean unconfirmed(long nowMs) {
+            return !"sold".equals(state)
+                    && !"listed".equals(state)
+                    && nowMs - boughtAtMs > UNCONFIRMED_AFTER_MS;
+        }
     }
+
+    /** How long an unlisted position keeps alerting before we admit we
+     *  cannot confirm it. 72h comfortably covers a real hold; past that,
+     *  silence beats a false alarm about an item that already sold. */
+    static final long UNCONFIRMED_AFTER_MS = 72L * 60 * 60 * 1000;
 
     private final List<Position> positions;
 

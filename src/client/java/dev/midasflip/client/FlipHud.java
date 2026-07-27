@@ -138,12 +138,13 @@ public final class FlipHud {
         // work itself). If even the CURRENT pessimistic estimate is below
         // what was paid, say so — with words only, never an action.
         session.ledger().tickRevaluation();
+        long nowMs = System.currentTimeMillis();
         int warned = 0;
         for (PositionLedger.Position p : session.ledger().recent(50)) {
             if (warned >= config.hudUnderwaterMaxRows) {
                 break;
             }
-            if (!"sold".equals(p.state) && p.underwater()) {
+            if (!"sold".equals(p.state) && !p.unconfirmed(nowMs) && p.underwater()) {
                 Phos.textShadow(gfx, mc.font, String.format(
                         "§c▼ %s underwater · paid %s · now ~%s§r",
                         shorten(NameMap.pretty(p.itemId), 18),

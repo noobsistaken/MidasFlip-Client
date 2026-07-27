@@ -675,7 +675,8 @@ public final class MidasflipShellScreen extends PhosScreen {
                 // ▼ underwater: the CURRENT pessimistic estimate is below
                 // cost — the market moved against this hold since buy.
                 // Display only; cutting the loss is the human's call.
-                String uw = p.underwater()
+                boolean unconfirmed = p.unconfirmed(System.currentTimeMillis());
+                String uw = unconfirmed ? "§8unconfirmed§r" : p.underwater()
                         ? " §c▼ underwater · now ~" + Phos.coins(p.curPessTotal()) + "§r" : "";
                 Phos.text(g, font, "§8" + ("listed".equals(p.state) ? "◐" : "○") + "§r "
                         + shorten(NameMap.pretty(p.itemId), 22) + " §7" + p.state + " · buy "

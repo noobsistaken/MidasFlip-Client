@@ -7,6 +7,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import dev.midasflip.client.ui.Phos;
 import dev.midasflip.client.ui.PhosScreen;
 import net.minecraft.client.Minecraft;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
@@ -75,7 +76,15 @@ public final class MidasflipShellScreen extends PhosScreen {
     }
 
     private void open(Tab t) {
-        Minecraft.getInstance().setScreen(new MidasflipShellScreen(config, feed, actions, session, api, t));
+        Minecraft mc = Minecraft.getInstance();
+        // Faint UI click on tab change (owner 2026-07-27). Quiet and
+        // high-pitched so it reads as interface feedback, not a game
+        // event; toggleable in Display. Client-side sound only — this
+        // plays nothing to the server and is not a game action.
+        if (config.tabSound && t != tab && mc.player != null) {
+            mc.player.playSound(SoundEvents.UI_BUTTON_CLICK.value(), 0.22f, 1.75f);
+        }
+        mc.setScreen(new MidasflipShellScreen(config, feed, actions, session, api, t));
     }
 
     private void refresh() {
@@ -919,11 +928,18 @@ public final class MidasflipShellScreen extends PhosScreen {
             filtersVisibility(g, x, y, half);
             return;
         }
+        // One line so the two panes are never confused (owner 2026-07-27).
+        Phos.text(g, font, "§8thresholds decide what the finder is ALLOWED to surface · "
+                + "drag a slider to its open end to switch it off§r", x, y - 12, Phos.FAINT);
         // Continuous sliders: drag a little, the value moves a little.
+        // A MINIMUM is disabled at its LEFT end, not its right — say so.
         contSlider(g, x, y, half, "min profit", 0, 20_000_000, 50_000, config.minProfit,
-                coinsFmt(), v -> config.minProfit = v);
-        contSlider(g, x + half + 10, y, half, "max cost", 0, 2_000_000_000, 1_000_000, config.maxCost,
-                coinsFmt(), v -> config.maxCost = v);
+                v -> v == 0 ? "off · any" : coinsFmt().format(v),
+                v -> config.minProfit = v);
+        contSlider(g, x + half + 10, y, half, "max cost", 0, 2_001_000_000, 1_000_000,
+                config.maxCost == 0 ? 2_001_000_000L : config.maxCost,
+                v -> (v >= 2_000_500_000L || v == 0) ? "∞ no cap" : coinsFmt().format(v),
+                v -> config.maxCost = (v >= 2_000_500_000L) ? 0 : v);
         y += 30;
         confSlider(g, x, y, half);
         cycle(g, x + half + 10, y, half, "min liquidity: " + config.minLiquidity.name().toLowerCase(Locale.ROOT), () -> {
@@ -931,8 +947,13 @@ public final class MidasflipShellScreen extends PhosScreen {
             config.minLiquidity = vs[(config.minLiquidity.ordinal() + 1) % vs.length];
         });
         y += 30;
-        contSlider(g, x, y, half, "max hold", 0, 240, 5, config.maxHoldMin,
-                v -> v == 0 ? "off" : v + "m", v -> config.maxHoldMin = (int) v);
+        // Far RIGHT switches the cap off (owner 2026-07-27): 245 is a
+        // sentinel past the real 240m range and stores 0, which passes()
+        // already reads as "no hold filter".
+        contSlider(g, x, y, half, "max hold", 0, 245, 5,
+                config.maxHoldMin == 0 ? 245 : config.maxHoldMin,
+                v -> (v >= 245 || v == 0) ? "∞ no cap" : v + "m",
+                v -> config.maxHoldMin = (v >= 245) ? 0 : (int) v);
         cycle(g, x + half + 10, y, half, "falling knives: " + (config.showFallingKnife ? "shown ⚠" : "hidden"),
                 () -> config.showFallingKnife = !config.showFallingKnife);
         y += 30;
@@ -1082,6 +1103,8 @@ public final class MidasflipShellScreen extends PhosScreen {
      *  0/off = today's board. These sit ON TOP of the server gates; they
      *  can only hide, never surface anything the server didn't vouch for. */
     private void filtersVisibility(GuiGraphicsExtractor g, int x, int y, int half) {
+        Phos.text(g, font, "§8what's shown hides rows that already qualified · "
+                + "thresholds gate, these filter§r", x, y - 12, Phos.FAINT);
         contSlider(g, x, y, half, "min margin", 0, 50, 1, config.minMarginPct,
                 v -> v == 0 ? "off" : v + "%", v -> config.minMarginPct = (int) v);
         contSlider(g, x + half + 10, y, half, "min comps", 0, 50, 1, config.minComps,
@@ -1231,6 +1254,8 @@ public final class MidasflipShellScreen extends PhosScreen {
         y += 30;
         cycle(g, x, y, half, "margin alert sound: " + (config.marginAlertSound ? "on" : "off"),
                 () -> config.marginAlertSound = !config.marginAlertSound);
+        cycle(g, x + half + 10, y, half, "menu tab sound: " + (config.tabSound ? "on" : "off"),
+                () -> config.tabSound = !config.tabSound);
         contSlider(g, x + half + 10, y, half, "alert volume", 0, 100, 5, Math.round(config.marginAlertVolume * 100),
                 v -> v + "%", v -> config.marginAlertVolume = v / 100f);
         y += 30;
@@ -1358,7 +1383,9 @@ public final class MidasflipShellScreen extends PhosScreen {
     }
 
     private void confSlider(GuiGraphicsExtractor g, int x, int y, int w) {
-        Phos.text(g, font, "§7min confidence: §f" + Math.round(config.minConfidence * 100) + "%§r", x, y, Phos.DIM);
+        String confLbl = config.minConfidence <= 0.355
+                ? "off · any" : Math.round(config.minConfidence * 100) + "%";
+        Phos.text(g, font, "§7min confidence: §f" + confLbl + "§r", x, y, Phos.DIM);
         Phos.bar(g, x, y + 11, w, 5, (config.minConfidence - 0.35) / 0.64, Phos.ACCENT);
         dragZone(x, y + 7, w, 13, frac -> {
             config.minConfidence = Math.round((0.35 + frac * 0.64) * 100) / 100.0;

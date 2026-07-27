@@ -163,6 +163,7 @@ public final class MidasflipConfig {
     // its dwell and the one-shot arm chirp. pitch stays fixed. ----
     public int marginAlertBannerMs = 5000;  // banner dwell, clamp [1000,15000]
     public boolean marginAlertSound = true; // play the one-shot arm chirp
+    public boolean tabSound = true;         // faint click when the menu changes tab
     public float marginAlertVolume = 0.4f;  // chirp volume, clamp [0,1]
 
     // ---- Coin formatting (config-completeness 2026-07-13). false = the

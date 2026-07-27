@@ -64,6 +64,7 @@ public final class Preset {
     public int compsPeekSales = 4;
     public int marginAlertBannerMs = 5000;
     public boolean marginAlertSound = true;
+    public boolean tabSound = true;
     public float marginAlertVolume = 0.4f;
     public boolean rawCoinNumbers = false;
     public boolean chatConfirmations = true;
@@ -106,6 +107,7 @@ public final class Preset {
         p.compsPeekSales = c.compsPeekSales;
         p.marginAlertBannerMs = c.marginAlertBannerMs;
         p.marginAlertSound = c.marginAlertSound;
+        p.tabSound = c.tabSound;
         p.marginAlertVolume = c.marginAlertVolume;
         p.rawCoinNumbers = c.rawCoinNumbers;
         p.chatConfirmations = c.chatConfirmations;
@@ -153,6 +155,7 @@ public final class Preset {
         c.compsPeekSales = compsPeekSales;
         c.marginAlertBannerMs = marginAlertBannerMs;
         c.marginAlertSound = marginAlertSound;
+        c.tabSound = tabSound;
         c.marginAlertVolume = marginAlertVolume;
         c.rawCoinNumbers = rawCoinNumbers;
         c.chatConfirmations = chatConfirmations;

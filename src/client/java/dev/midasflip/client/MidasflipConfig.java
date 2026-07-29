@@ -85,6 +85,7 @@ public final class MidasflipConfig {
     public Liquidity minLiquidity = Liquidity.MED;
     public int maxHoldMin = 60; // 0 = off
     public boolean showFallingKnife = true; // shown flagged; false hides them
+    public boolean showPatient = true;      // PATIENT verdict tier: shown labeled; false hides
     /** Hide candied-pet flips (owner 2026-07-11). The comp key carries the
      *  candied split (|c1), so the filter is server-truth, not name
      *  parsing. Default shows them — candied buckets price against their
@@ -269,6 +270,7 @@ public final class MidasflipConfig {
         if (f.salesPerDay < effMinSpd) return false;
         if (maxHoldMin > 0 && f.holdMedS != null && f.holdMedS > maxHoldMin * 60L) return false;
         if (!showFallingKnife && f.fallingKnife) return false;
+        if (!showPatient && "patient".equals(f.verdict)) return false;
         if (hideCandied && f.compKey != null && f.compKey.contains("|c1")) return false;
 
         // "What's shown" filters — 0/SHOW_ALL = off. Unknown values pass

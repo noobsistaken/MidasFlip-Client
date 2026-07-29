@@ -240,6 +240,12 @@ public final class ItemTooltip {
                 lines.add(Component.literal("§e⚠ starred/recombed — clean price, likely LOW§r"));
             }
         }
+        // What it would cost to MAKE this instead of buying it (owner
+        // 2026-07-27). Same stack-total convention as every number above.
+        String craft = craftLine(skyblockId, units);
+        if (craft != null) {
+            lines.add(Component.literal(craft));
+        }
         // Live listing depth (owner: next-lowest is your REAL exit when
         // you buy the floor). Stack totals, like the finder and estimates.
         String lbin = lbinLine(config, resp, units);
@@ -260,6 +266,100 @@ public final class ItemTooltip {
                         + b + " bucket · EXP unavailable§r"));
             }
         }
+    }
+
+    /** "estimated craft price" — what one unit costs to make, from the
+     *  server's craft/forge EV board (/craft/evs), which prices every leg
+     *  from OUR market data and skips any recipe with an unpriceable leg.
+     *
+     *  cost is per recipe RUN and output_count is the yield, so the honest
+     *  per-unit number is cost/output_count — then scaled to the stack the
+     *  same way every other line here is.
+     *
+     *  ABSENCE MEANS LITTLE. The server publishes only the top 100 rows by
+     *  profit (build.py craft_evs[:100]) and drops anything under its
+     *  profit/margin gate, so at most ~100 of 2,556 recipes can ever show a
+     *  line. No line = "not on today's profitable board", NOT "cannot be
+     *  crafted". The number shown is honest; the silence is not evidence.
+     *
+     *  Null (no line) when: no row for this item, the board is still
+     *  loading, or the endpoint is not available to this account. Never a
+     *  guess. */
+    String craftLine(String itemId, int units) {
+        if (itemId == null || itemId.isEmpty()) {
+            return null;
+        }
+        JsonObject row = craftRow(itemId);
+        if (row == null || !row.has("cost") || !row.has("output_count")) {
+            return null;
+        }
+        double outCount = row.get("output_count").getAsDouble();
+        if (outCount <= 0) {
+            return null;
+        }
+        double perUnit = row.get("cost").getAsDouble() / outCount;
+        String kind = row.has("kind") ? row.get("kind").getAsString() : "craft";
+        String req = row.has("req") && !row.get("req").isJsonNull()
+                ? " §8· " + row.get("req").getAsString() : "";
+        return "§7est. craft §f" + coins(perUnit * units) + " §8· " + kind + req + "§r";
+    }
+
+    // Index the EV board by output id so a tooltip render is a map lookup,
+    // not a linear scan every frame.
+    //
+    // Keyed on ARRAY IDENTITY, not size: the server publishes exactly 100
+    // rows every build (build.py craft_evs[:100]), so a size comparison is
+    // true once and then never again — the index would freeze on the first
+    // board of the session and serve hours-old coin figures (review
+    // 2026-07-27). MidasflipApi hands back the same JsonElement instance
+    // until a refresh lands, so reference inequality is precisely "the
+    // board changed". That also covers re-pairing: credentialsChanged()
+    // empties the API cache, so the next fetch is a different instance and
+    // the previous account's board can never be reused.
+    //
+    // Instance state, not static, so it cannot outlive this tooltip.
+    private java.util.Map<String, JsonObject> craftIndex = java.util.Map.of();
+    private com.google.gson.JsonArray craftIndexOf;
+
+    private JsonObject craftRow(String itemId) {
+        var el = api.get("/craft/evs", 5 * 60_000);
+        if (el == null || !el.isJsonArray()) {
+            return null;  // loading, unavailable, or not on this plan
+        }
+        var arr = el.getAsJsonArray();
+        if (arr != craftIndexOf) {
+            var next = new java.util.HashMap<String, JsonObject>(arr.size() * 2);
+            for (var e : arr) {
+                if (!e.isJsonObject()) {
+                    continue;
+                }
+                var o = e.getAsJsonObject();
+                if (!o.has("output_id") || !o.has("cost") || !o.has("output_count")) {
+                    continue;
+                }
+                String id = o.get("output_id").getAsString();
+                JsonObject prev = next.get(id);
+                // The board is sorted by absolute PROFIT PER RUN, which is
+                // not the same question this line answers. 35 ids appear
+                // twice with different yields (ENCHANTED_DIAMOND at n=1 and
+                // n=9, AMALGAMATED_CRIMSONITE_NEW at n=2 and n=40), and the
+                // big-batch row usually wins on profit while costing more
+                // per unit. Keep the CHEAPEST way to make one.
+                if (prev == null || perUnitCost(o) < perUnitCost(prev)) {
+                    next.put(id, o);
+                }
+            }
+            craftIndex = next;
+            craftIndexOf = arr;
+        }
+        return craftIndex.get(itemId);
+    }
+
+    /** cost per single output unit; +inf for an unusable row so it loses
+     *  every comparison rather than being picked. */
+    private static double perUnitCost(JsonObject row) {
+        double n = row.get("output_count").getAsDouble();
+        return n > 0 ? row.get("cost").getAsDouble() / n : Double.POSITIVE_INFINITY;
     }
 
     static String compactPetExp(double exp) {

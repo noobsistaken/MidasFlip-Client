@@ -24,6 +24,10 @@ public final class Flip {
     @SerializedName("hold_p90_s") public Long holdP90S;   // honest slow tail
     @SerializedName("fill_pct") public Double fillPct;    // BIN sell-through %
     @SerializedName("falling_knife") public boolean fallingKnife;
+    /** "" / null = normal; "patient" = fast exit underwater on the
+     *  pess-anchored quote, patient target still clears buy (P2-final).
+     *  Display/filter only — the server already decided emission. */
+    public String verdict;
     public String manip;                                  // "med" | "high" | null
     @SerializedName("manip_reasons") public String[] manipReasons;
     @SerializedName("pet_candy") public int petCandy;     // candies consumed (pets, 0-10)
@@ -32,8 +36,10 @@ public final class Flip {
     // buy — buy is ALREADY subtracted server-side (flip.go attachExits,
     // pinned by TestExitNetIsAProfitDelta); render them directly, NEVER
     // subtract the buy price again (that shipped once as a fake -6.3M
-    // loss on a +1.7M flip). Patient absent when converged with fast;
-    // both absent if the scoring-bug guard fired.
+    // loss on a +1.7M flip). Patient absent when converged with fast on
+    // NORMAL flips only. P2-final: lines are never omitted; on a
+    // "patient" verdict exit_fast_net is NEGATIVE (the explicit
+    // "fast exit: -X%" line) and the patient line is always present.
     @SerializedName("exit_fast") public Double exitFast;
     @SerializedName("exit_fast_net") public Double exitFastNet;
     @SerializedName("exit_fast_hold_s") public Long exitFastHoldS;

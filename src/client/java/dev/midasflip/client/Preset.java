@@ -26,6 +26,7 @@ public final class Preset {
     public MidasflipConfig.Liquidity minLiquidity = MidasflipConfig.Liquidity.MED;
     public int maxHoldMin = 60;
     public boolean showFallingKnife = true;
+    public boolean showPatient = true;
     public boolean hideCandied = false;
     /** Board ranking. Null on older codes — keeps the user's current mode. */
     public MidasflipConfig.SortMode sortMode;
@@ -85,6 +86,7 @@ public final class Preset {
         p.minLiquidity = c.minLiquidity;
         p.maxHoldMin = c.maxHoldMin;
         p.showFallingKnife = c.showFallingKnife;
+        p.showPatient = c.showPatient;
         p.hideCandied = c.hideCandied;
         p.sortMode = c.sortMode;
         p.minMarginPct = c.minMarginPct;
@@ -133,6 +135,7 @@ public final class Preset {
         c.minLiquidity = minLiquidity == null ? MidasflipConfig.Liquidity.MED : minLiquidity;
         c.maxHoldMin = maxHoldMin;
         c.showFallingKnife = showFallingKnife;
+        c.showPatient = showPatient;
         c.hideCandied = hideCandied;
         if (sortMode != null) c.sortMode = sortMode;
         c.minMarginPct = minMarginPct;
@@ -239,6 +242,7 @@ public final class Preset {
         conservative.minConfidence = 0.85;
         conservative.minLiquidity = MidasflipConfig.Liquidity.HIGH;
         conservative.showFallingKnife = false;
+        conservative.showPatient = false;
         m.put("conservative", conservative);
 
         m.put("default", new Preset());

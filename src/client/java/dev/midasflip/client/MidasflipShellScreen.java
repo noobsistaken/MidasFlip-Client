@@ -322,7 +322,8 @@ public final class MidasflipShellScreen extends PhosScreen {
         String chips = String.format("profit ≥ %s · conf ≥ %d%% · liq ≥ %s%s",
                 Phos.coins(config.minProfit), Math.round(config.minConfidence * 100),
                 config.minLiquidity.name().toLowerCase(Locale.ROOT),
-                config.showFallingKnife ? "" : " · knives hidden");
+                (config.showFallingKnife ? "" : " · knives hidden")
+                        + (config.showPatient ? "" : " · patient hidden"));
         Phos.text(g, font, "§8" + chips + "§r", x, y, Phos.FAINT);
         String evChip = eventChip();
         if (!evChip.isEmpty()) {
@@ -442,9 +443,18 @@ public final class MidasflipShellScreen extends PhosScreen {
                 + (rej > 0 ? " · " + rej + " rejected" : "")
                 + " · " + srcShort + "§r", x, yy + 2, Phos.GREEN);
         if (f.exitFast != null) {
-            String line = "exit " + Phos.coins(f.exitFast) + " fast"
+            // Signed net deltas ride each exit line (P2-final: a PATIENT
+            // flip's fast line is an explicit loss, never hidden). Same
+            // sign pattern as SellOverlay — abs() after the color, so a
+            // negative never renders as "+-".
+            String fastNet = f.exitFastNet != null
+                    ? (f.exitFastNet >= 0 ? " §a+" : " §c-") + Phos.coins(Math.abs(f.exitFastNet)) + "§7" : "";
+            String patientNet = f.exitPatientNet != null
+                    ? (f.exitPatientNet >= 0 ? " §a+" : " §c-") + Phos.coins(Math.abs(f.exitPatientNet)) + "§7" : "";
+            String badge = "patient".equals(f.verdict) ? "§6◔ patient flip§7 · " : "";
+            String line = badge + "exit " + Phos.coins(f.exitFast) + " fast" + fastNet
                     + (f.exitFastHoldS != null ? " §8~" + compactDur(f.exitFastHoldS) + "§7" : "")
-                    + (f.exitPatient != null ? " · " + Phos.coins(f.exitPatient) + " patient"
+                    + (f.exitPatient != null ? " · " + Phos.coins(f.exitPatient) + " patient" + patientNet
                     + (f.exitPatientHoldS != null ? " §8~" + compactDur(f.exitPatientHoldS) + "§7" : "") : "");
             Phos.text(g, font, "§7" + line + "§r", x, yy + 13, Phos.DIM);
         }
@@ -957,6 +967,9 @@ public final class MidasflipShellScreen extends PhosScreen {
                 v -> config.maxHoldMin = (v >= 245) ? 0 : (int) v);
         cycle(g, x + half + 10, y, half, "falling knives: " + (config.showFallingKnife ? "shown ⚠" : "hidden"),
                 () -> config.showFallingKnife = !config.showFallingKnife);
+        y += 30;
+        cycle(g, x, y, half, "patient flips: " + (config.showPatient ? "shown ◔" : "hidden"),
+                () -> config.showPatient = !config.showPatient);
         y += 30;
         cycle(g, x, y, half, "pet lvl rule: " + (config.petLevelRule
                         ? "on · <" + config.petLevelPremiumFloor + " = fresh price" : "off"),

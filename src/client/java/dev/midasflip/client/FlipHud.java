@@ -92,10 +92,11 @@ public final class FlipHud {
             String candy = f.petCandy > 0 ? " §d" + f.petCandy + "/10 candies§r" : "";
             String status = f.gone ? "§c✗ taken" : fresh ? "new" : f.ageSeconds() + "s";
             String profitCol = f.gone ? "§8" : "§a+";
-            String row = String.format("%s%s%s%s%s%s§r %s → %s%s§r (%.0f%%) §7c%.2f · %s§r",
+            String row = String.format("%s%s%s%s%s%s%s§r %s → %s%s§r (%.0f%%) §7c%.2f · %s§r",
                     Rule.starred(config.rules, f) ? "§e★§r " : "",
                     f.fallingKnife && !f.gone ? "§c⚠§r " : "",
                     !f.gone && "high".equals(f.manip) ? "§c⚑§r " : !f.gone && "med".equals(f.manip) ? "§6⚐§r " : "",
+                    !f.gone && "patient".equals(f.verdict) ? "§6◔§r " : "",
                     tier,
                     shorten(NameMap.pretty(f.itemId, f.compKey), f.petCandy > 0 ? 14 : 22),
                     candy,

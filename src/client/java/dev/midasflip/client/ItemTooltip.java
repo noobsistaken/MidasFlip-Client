@@ -74,14 +74,19 @@ public final class ItemTooltip {
             }
             lines.add(Component.literal(""));
             lines.add(Component.literal("§6§lMidasFlip"));
-            lines.add(Component.literal("§7sell target §a" + coins(match.estPess)
+            lines.add(Component.literal(match.estPess == null
+                    ? GoldFields.locked("sell target")
+                    : "§7sell target §a" + coins(match.estPess)
                     + "  §7conf §f" + String.format(Locale.ROOT, "%.2f", match.confidence)
                     + " §8(" + match.comps + " comps)§r"));
-            lines.add(Component.literal("§7fair §f" + coins(match.estBase)
+            lines.add(Component.literal(match.estOpt == null
+                    ? GoldFields.locked("bands")
+                    : "§7fair §f" + coins(match.estBase)
                     + " §8· high §f" + coins(match.estOpt) + "§r"));
             lines.add(Component.literal("§7net §a+" + coins(match.netProfit)
                     + " §8(" + Math.round(match.netMarginPct * 100) + "%)§r"
-                    + (match.fallingKnife ? " §c⚠ falling§r" : "")));
+                    + (Boolean.TRUE.equals(match.fallingKnife) ? " §c⚠ falling§r"
+                    : match.fallingKnife == null ? " " + GoldFields.locked("falling") : "")));
             lines.add(Component.literal("§8matched to board auction by item · count · price§r"));
         });
     }
@@ -194,12 +199,16 @@ public final class ItemTooltip {
         }
         boolean lowball = resp.has("fallback_from_mods");
         boolean decomposed = est.has("src") && "decomposed".equals(est.get("src").getAsString());
+        Double pess = GoldFields.optNum(est, "pess");
+        Double opt = GoldFields.optNum(est, "opt");
         lines.add(Component.literal(""));
         lines.add(Component.literal("§6§lMidasFlip §8· " + bucket
                 + (units > 1 ? " · ×" + units : "")));
         if (bazaar) {
             FinderValuation.Result valuation = FinderValuation.from(est, resp);
-            lines.add(Component.literal("§7instasell §a" + coins(valuation.target() * units)
+            lines.add(Component.literal(pess == null || opt == null
+                    ? GoldFields.locked("bands")
+                    : "§7instasell §a" + coins(valuation.target() * units)
                     + " §8· sell offer §f" + coins(valuation.high() * units) + "§r"));
             lines.add(Component.literal("§8instasell – sell offer · bazaar venue§r"));
         } else {
@@ -215,21 +224,27 @@ public final class ItemTooltip {
             if (valuation.backed()) {
                 lines.add(Component.literal("§7sell target §a" + coins(valuation.target() * units)
                         + " §8· finder valuation§r"));
-                lines.add(Component.literal("§7fair §f" + coins(valuation.fair() * units)
+                lines.add(Component.literal(opt == null
+                        ? GoldFields.locked("bands")
+                        : "§7fair §f" + coins(valuation.fair() * units)
                         + " §8· high §f" + coins(valuation.high() * units) + "§r"));
             } else {
                 lines.add(Component.literal("§evalue unverified §8· "
                         + valuation.blockedReason() + "§r"));
-                lines.add(Component.literal("§8sold comps "
-                        + coins(est.get("pess").getAsDouble() * units) + "–"
-                        + coins(est.get("opt").getAsDouble() * units) + "§r"));
+                lines.add(Component.literal(pess == null || opt == null
+                        ? GoldFields.locked("bands")
+                        : "§8sold comps " + coins(pess * units) + "–"
+                        + coins(opt * units) + "§r"));
             }
             if (decomposed) {
                 // NEVER show a decomposed number without this marker — the
                 // amber cap exists so it reads as SOFTER than a direct comp
                 // (spec transparency). The +sum is the learned modifier
                 // uplift the server itemized in mod_contributions.
-                lines.add(Component.literal("§7incl. modifiers §f+" + coins(modContribSum(resp) * units)
+                Double contributions = modContribSum(resp);
+                lines.add(Component.literal(contributions == null
+                        ? GoldFields.locked("incl. modifiers")
+                        : "§7incl. modifiers §f+" + coins(contributions * units)
                         + "§8 · amber conf§r"));
                 if (lorePath) {
                     lines.add(Component.literal(
@@ -242,9 +257,13 @@ public final class ItemTooltip {
         }
         // What it would cost to MAKE this instead of buying it (owner
         // 2026-07-27). Same stack-total convention as every number above.
-        String craft = craftLine(skyblockId, units);
-        if (craft != null) {
-            lines.add(Component.literal(craft));
+        // Checked before craftLine so switching it off also stops the index
+        // fetch, which is the only reason the switch exists.
+        if (config.craftPrice) {
+            String craft = craftLine(skyblockId, units);
+            if (craft != null) {
+                lines.add(Component.literal(craft));
+            }
         }
         // Live listing depth (owner: next-lowest is your REAL exit when
         // you buy the floor). Stack totals, like the finder and estimates.
@@ -268,98 +287,67 @@ public final class ItemTooltip {
         }
     }
 
-    /** "estimated craft price" — what one unit costs to make, from the
-     *  server's craft/forge EV board (/craft/evs), which prices every leg
-     *  from OUR market data and skips any recipe with an unpriceable leg.
+    /** "estimated craft price" — what one unit costs to make, from
+     *  /craft/costs: every recipe whose inputs we can price, each leg valued
+     *  from OUR market data.
      *
-     *  cost is per recipe RUN and output_count is the yield, so the honest
-     *  per-unit number is cost/output_count — then scaled to the stack the
-     *  same way every other line here is.
+     *  Reads the COST index, not the EV board (owner 2026-07-29). The board
+     *  answers "what is profitable to craft", drops anything under its
+     *  profit/margin gate and then keeps only the top 100 — so it could
+     *  never show a line for the other ~2,450 recipes, which is most of what
+     *  a player hovers. Cost was computed on the way to that gate and thrown
+     *  away; /craft/costs keeps it.
      *
-     *  ABSENCE MEANS LITTLE. The server publishes only the top 100 rows by
-     *  profit (build.py craft_evs[:100]) and drops anything under its
-     *  profit/margin gate, so at most ~100 of 2,556 recipes can ever show a
-     *  line. No line = "not on today's profitable board", NOT "cannot be
-     *  crafted". The number shown is honest; the silence is not evidence.
+     *  cost is per recipe RUN and n is the yield, so the honest per-unit
+     *  figure is cost/n — then scaled to the stack like every other line
+     *  here. The server has already picked the cheapest recipe per unit
+     *  where several make the same item, so there is nothing to choose here.
      *
-     *  Null (no line) when: no row for this item, the board is still
-     *  loading, or the endpoint is not available to this account. Never a
-     *  guess. */
+     *  No recipe REQUIREMENT is shown, deliberately (owner 2026-07-29). This
+     *  line is a value anchor — what the thing would cost to make, against
+     *  what you are being asked to pay — not a check on whether you can make
+     *  it. The comparison holds whatever your slayer level is, and 48% of
+     *  recipes carry a gate, so quoting them all would be noise against the
+     *  question actually being asked.
+     *
+     *  ABSENCE now means something narrower: we could not price some input,
+     *  so there is no honest number. It still does NOT mean "cannot be
+     *  crafted". Null also while the index is loading or if the endpoint is
+     *  unavailable. Never a guess. */
     String craftLine(String itemId, int units) {
         if (itemId == null || itemId.isEmpty()) {
             return null;
         }
         JsonObject row = craftRow(itemId);
-        if (row == null || !row.has("cost") || !row.has("output_count")) {
+        if (row == null || !row.has("cost") || !row.has("n")) {
             return null;
         }
-        double outCount = row.get("output_count").getAsDouble();
-        if (outCount <= 0) {
+        double yield = row.get("n").getAsDouble();
+        if (yield <= 0) {
             return null;
         }
-        double perUnit = row.get("cost").getAsDouble() / outCount;
+        double perUnit = row.get("cost").getAsDouble() / yield;
         String kind = row.has("kind") ? row.get("kind").getAsString() : "craft";
-        String req = row.has("req") && !row.get("req").isJsonNull()
-                ? " §8· " + row.get("req").getAsString() : "";
-        return "§7est. craft §f" + coins(perUnit * units) + " §8· " + kind + req + "§r";
+        return "§7est. craft §f" + coins(perUnit * units) + " §8· " + kind + "§r";
     }
 
-    // Index the EV board by output id so a tooltip render is a map lookup,
-    // not a linear scan every frame.
+    // /craft/costs is keyed BY output id, so a tooltip render is one member
+    // lookup: no index to build, no cache to invalidate, and no
+    // duplicate-recipe choice to make here — the server already published the
+    // cheapest per unit.
     //
-    // Keyed on ARRAY IDENTITY, not size: the server publishes exactly 100
-    // rows every build (build.py craft_evs[:100]), so a size comparison is
-    // true once and then never again — the index would freeze on the first
-    // board of the session and serve hours-old coin figures (review
-    // 2026-07-27). MidasflipApi hands back the same JsonElement instance
-    // until a refresh lands, so reference inequality is precisely "the
-    // board changed". That also covers re-pairing: credentialsChanged()
-    // empties the API cache, so the next fetch is a different instance and
-    // the previous account's board can never be reused.
-    //
-    // Instance state, not static, so it cannot outlive this tooltip.
-    private java.util.Map<String, JsonObject> craftIndex = java.util.Map.of();
-    private com.google.gson.JsonArray craftIndexOf;
-
+    // This deletes a bug class rather than fixing it. Indexing an ARRAY forced
+    // a hand-rolled cache; keying that cache on the array's SIZE froze it
+    // permanently, because the board was always exactly 100 rows (review
+    // 2026-07-27), and holding it in a static field let one account's board
+    // outlive a re-pair. A stateless lookup cannot do either.
     private JsonObject craftRow(String itemId) {
-        var el = api.get("/craft/evs", 5 * 60_000);
-        if (el == null || !el.isJsonArray()) {
-            return null;  // loading, unavailable, or not on this plan
+        var el = api.get("/craft/costs", 5 * 60_000);
+        if (el == null || !el.isJsonObject()) {
+            return null;  // loading, or the endpoint is unavailable
         }
-        var arr = el.getAsJsonArray();
-        if (arr != craftIndexOf) {
-            var next = new java.util.HashMap<String, JsonObject>(arr.size() * 2);
-            for (var e : arr) {
-                if (!e.isJsonObject()) {
-                    continue;
-                }
-                var o = e.getAsJsonObject();
-                if (!o.has("output_id") || !o.has("cost") || !o.has("output_count")) {
-                    continue;
-                }
-                String id = o.get("output_id").getAsString();
-                JsonObject prev = next.get(id);
-                // The board is sorted by absolute PROFIT PER RUN, which is
-                // not the same question this line answers. 35 ids appear
-                // twice with different yields (ENCHANTED_DIAMOND at n=1 and
-                // n=9, AMALGAMATED_CRIMSONITE_NEW at n=2 and n=40), and the
-                // big-batch row usually wins on profit while costing more
-                // per unit. Keep the CHEAPEST way to make one.
-                if (prev == null || perUnitCost(o) < perUnitCost(prev)) {
-                    next.put(id, o);
-                }
-            }
-            craftIndex = next;
-            craftIndexOf = arr;
-        }
-        return craftIndex.get(itemId);
-    }
-
-    /** cost per single output unit; +inf for an unusable row so it loses
-     *  every comparison rather than being picked. */
-    private static double perUnitCost(JsonObject row) {
-        double n = row.get("output_count").getAsDouble();
-        return n > 0 ? row.get("cost").getAsDouble() / n : Double.POSITIVE_INFINITY;
+        var row = el.getAsJsonObject().get(itemId);
+        return row != null && row.isJsonObject() ? row.getAsJsonObject() : null;
     }
 
     static String compactPetExp(double exp) {
@@ -374,28 +362,29 @@ public final class ItemTooltip {
 
     /** The lowest-BIN depth line from a /price response's optional "lbin"
      *  object {low, next, at_floor, n} (unit prices): "§7lbin §f2.4M §8·
-     *  next 2.5M · 3 at floor§r". Null when the toggle is off, the field
-     *  is absent (no active BINs / older server), or low is null. Depth
-     *  matters (owner): next-lowest is your REAL exit when you buy the
-     *  floor. {@code units} multiplies for surfaces that display stack
-     *  totals (SellOverlay); tooltips pass 1. Shared with SellOverlay. */
+     *  next 2.5M · 3 at floor§r". Null when the toggle is off; a missing
+     *  object or low value returns the shared locked marker. Depth matters
+     *  (owner): next-lowest is your REAL exit when you buy the floor.
+     *  {@code units} multiplies for surfaces that display stack totals
+     *  (SellOverlay); tooltips pass 1. Shared with SellOverlay. */
     static String lbinLine(MidasflipConfig config, JsonObject resp, int units) {
-        if (!config.lbinTooltip || !resp.has("lbin") || !resp.get("lbin").isJsonObject()) {
+        if (!config.lbinTooltip) {
             return null;
         }
-        JsonObject lb = resp.getAsJsonObject("lbin");
-        if (!lb.has("low") || lb.get("low").isJsonNull()) {
-            return null;
+        JsonObject lb = GoldFields.optObj(resp, "lbin");
+        Double low = GoldFields.optNum(lb, "low");
+        if (low == null) {
+            return GoldFields.locked("lbin");
         }
         StringBuilder s = new StringBuilder("§7lbin §f")
-                .append(coins((double) lb.get("low").getAsLong() * units));
-        if (lb.has("next") && !lb.get("next").isJsonNull()) {
-            s.append(" §8· next ").append(coins((double) lb.get("next").getAsLong() * units));
+                .append(coins(low * units));
+        Double next = GoldFields.optNum(lb, "next");
+        if (next != null) {
+            s.append(" §8· next ").append(coins(next * units));
         }
-        int atFloor = lb.has("at_floor") && !lb.get("at_floor").isJsonNull()
-                ? lb.get("at_floor").getAsInt() : 0;
-        if (atFloor > 1) {
-            s.append(" §8· ").append(atFloor).append(" at floor");
+        Double atFloor = GoldFields.optNum(lb, "at_floor");
+        if (atFloor != null && atFloor > 1) {
+            s.append(" §8· ").append(atFloor.intValue()).append(" at floor");
         }
         return s.append("§r").toString();
     }
@@ -410,17 +399,20 @@ public final class ItemTooltip {
     }
 
     /** Sum of the server's itemized per-modifier deltas (mod_contributions
-     *  map atom->coins), for the "incl. modifiers +X" marker. 0 when the
-     *  field is absent. */
-    static double modContribSum(JsonObject resp) {
-        if (!resp.has("mod_contributions") || !resp.get("mod_contributions").isJsonObject()) {
-            return 0;
+     *  map atom->coins), for the "incl. modifiers +X" marker. Null when
+     *  the field is unavailable or malformed. */
+    static Double modContribSum(JsonObject resp) {
+        JsonObject contributions = GoldFields.optObj(resp, "mod_contributions");
+        if (contributions == null) {
+            return null;
         }
         double sum = 0;
-        for (var e : resp.getAsJsonObject("mod_contributions").entrySet()) {
-            if (!e.getValue().isJsonNull()) {
-                sum += e.getValue().getAsDouble();
+        for (var e : contributions.entrySet()) {
+            Double value = GoldFields.optNum(contributions, e.getKey());
+            if (value == null) {
+                return null;
             }
+            sum += value;
         }
         return sum;
     }

@@ -98,8 +98,21 @@ public final class MidasflipClient implements ClientModInitializer {
             if (config.apiToken.isEmpty()) {
                 mc.setScreen(new MidasflipFirstRunScreen(null, config, api, feed));
             } else {
-                mc.setScreen(new MidasflipShellScreen(config, feed, actions, session, api,
-                        MidasflipShellScreen.Tab.FLIPS));
+                MidasflipShellScreen shell = new MidasflipShellScreen(config, feed, actions, session, api,
+                        MidasflipShellScreen.Tab.FLIPS);
+                // The tour's other trigger lives in MidasflipFirstRunScreen,
+                // which only ever renders for a client with NO token — so
+                // anyone who already had one never reached it and never saw
+                // the tour. That is every upgrader, not an edge case: the
+                // gate was auth state when it should have been "have they
+                // seen it". Opening it here with the shell as parent means
+                // closing the tour lands where the keypress was headed.
+                // onClose() records Tour.VERSION, so this fires exactly once.
+                if (TourScreen.Tour.shouldOpen(config.tourSeenVersion)) {
+                    mc.setScreen(new TourScreen(shell, config));
+                } else {
+                    mc.setScreen(shell);
+                }
             }
         }
 

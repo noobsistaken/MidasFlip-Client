@@ -186,7 +186,13 @@ public final class TourScreen extends PhosScreen {
     public void onClose() {
         if (config.tourSeenVersion < Tour.VERSION) {
             config.tourSeenVersion = Tour.VERSION;
-            config.save();
+            // If the write fails the promise cannot be kept, so don't pretend
+            // it was: roll the field back so the in-memory state matches the
+            // disk. The tour reappears next launch, which is the honest
+            // outcome of an unwritable config dir.
+            if (!config.save()) {
+                config.tourSeenVersion = 0;
+            }
         }
         Minecraft.getInstance().setScreen(parent);
     }

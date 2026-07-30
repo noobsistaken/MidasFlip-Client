@@ -353,14 +353,17 @@ public final class MidasflipShellScreen extends PhosScreen {
             // Manipulation gets its own loud mark: ⚑ high (red), ⚐ med
             // (amber) — a first-class glance signal, not buried in conf.
             String manipMark = "high".equals(f.manip) ? "§c⚑§r" : "med".equals(f.manip) ? "§6⚐§r" : "";
-            String marks = (Rule.starred(config.rules, f) ? "§e★§r" : "") + (f.fallingKnife ? "§c⚠§r" : "") + manipMark;
+            String marks = (Rule.starred(config.rules, f) ? "§e★§r" : "")
+                    + (Boolean.TRUE.equals(f.fallingKnife) ? "§c⚠§r" : "") + manipMark;
             // Candy transparency (owner 2026-07-11): the count rides in the
             // name — "Sheep 4/10 candies" — appended AFTER shortening so it
             // never truncates away.
             String candy = f.petCandy > 0 ? " §d" + f.petCandy + "/10 candies§r" : "";
             Phos.text(g, font, marks + shorten(NameMap.pretty(f.itemId, f.compKey),
                     f.petCandy > 0 ? 12 : 22) + candy, x + cols[0], y, tier);
-            Phos.text(g, font, Phos.coins(f.buyPrice) + " §8→§r " + Phos.coins(f.estPess), x + cols[1], y, Phos.DIM);
+            Phos.text(g, font, Phos.coins(f.buyPrice) + " §8→§r "
+                    + (f.estPess == null ? GoldFields.locked("SELL") : Phos.coins(f.estPess)),
+                    x + cols[1], y, Phos.DIM);
             Phos.text(g, font, "+" + Phos.coins(f.netProfit) + " §8(" + Math.round(f.netMarginPct * 100) + "%)§r",
                     x + cols[2], y, Phos.GREEN);
             Phos.text(g, font, String.format("%.2f§8·%d§r", f.confidence, f.comps), x + cols[3], y, Phos.DIM);
@@ -414,21 +417,27 @@ public final class MidasflipShellScreen extends PhosScreen {
             return;
         }
         JsonObject d = el.getAsJsonObject();
-        JsonArray sales = d.getAsJsonArray("recent_sales");
+        JsonArray sales = GoldFields.optArr(d, "recent_sales");
         JsonObject est = d.getAsJsonObject("estimate");
-        Phos.label(g, font, "comps · " + Math.min(sales.size(), 25) + " recent", x, y + 2);
+        if (sales == null) {
+            Phos.text(g, font, GoldFields.locked("comps"), x, y + 2, Phos.FAINT);
+        } else {
+            Phos.label(g, font, "comps · " + Math.min(sales.size(), 25) + " recent", x, y + 2);
+        }
         int yy = y + 14;
         int shown = 0;
         long now = System.currentTimeMillis();
-        for (JsonElement se : sales) {
-            JsonObject s = se.getAsJsonObject();
-            String iso = s.get("ended_at").getAsString();
-            long ageMin = Math.max(0, (now - Instant.parse(iso.contains("+") || iso.endsWith("Z") ? iso : iso + "Z").toEpochMilli()) / 60_000);
-            Phos.text(g, font, Phos.coins(s.get("unit_price").getAsLong())
-                    + " §8· " + (ageMin >= 60 ? (ageMin / 60) + "h" + ageMin % 60 + "m" : ageMin + "m") + " · exact§r", x, yy, Phos.DIM);
-            yy += 10;
-            if (++shown >= config.compsPeekSales) {
-                break;
+        if (sales != null) {
+            for (JsonElement se : sales) {
+                JsonObject s = se.getAsJsonObject();
+                String iso = s.get("ended_at").getAsString();
+                long ageMin = Math.max(0, (now - Instant.parse(iso.contains("+") || iso.endsWith("Z") ? iso : iso + "Z").toEpochMilli()) / 60_000);
+                Phos.text(g, font, Phos.coins(s.get("unit_price").getAsLong())
+                        + " §8· " + (ageMin >= 60 ? (ageMin / 60) + "h" + ageMin % 60 + "m" : ageMin + "m") + " · exact§r", x, yy, Phos.DIM);
+                yy += 10;
+                if (++shown >= config.compsPeekSales) {
+                    break;
+                }
             }
         }
         // Show-your-work: source (direct comps vs a derived sibling) and how
@@ -437,8 +446,11 @@ public final class MidasflipShellScreen extends PhosScreen {
         String src = est.has("src") ? est.get("src").getAsString() : "comps";
         String srcShort = src.startsWith("derived") ? "derived" : src;
         int rej = est.has("outliers") ? est.get("outliers").getAsInt() : 0;
-        Phos.text(g, font, "§aEST EXIT " + Phos.coins(est.get("pess").getAsDouble())
-                + "§r §8· conf " + String.format("%.2f", est.get("conf").getAsDouble())
+        Double pess = GoldFields.optNum(est, "pess");
+        String estExit = pess == null
+                ? GoldFields.locked("EST EXIT")
+                : "§aEST EXIT " + Phos.coins(pess) + "§r";
+        Phos.text(g, font, estExit + " §8· conf " + String.format("%.2f", est.get("conf").getAsDouble())
                 + " · " + est.get("comps").getAsInt() + " comps"
                 + (rej > 0 ? " · " + rej + " rejected" : "")
                 + " · " + srcShort + "§r", x, yy + 2, Phos.GREEN);
@@ -447,22 +459,33 @@ public final class MidasflipShellScreen extends PhosScreen {
             // flip's fast line is an explicit loss, never hidden). Same
             // sign pattern as SellOverlay — abs() after the color, so a
             // negative never renders as "+-".
-            String fastNet = f.exitFastNet != null
-                    ? (f.exitFastNet >= 0 ? " §a+" : " §c-") + Phos.coins(Math.abs(f.exitFastNet)) + "§7" : "";
-            String patientNet = f.exitPatientNet != null
-                    ? (f.exitPatientNet >= 0 ? " §a+" : " §c-") + Phos.coins(Math.abs(f.exitPatientNet)) + "§7" : "";
-            String badge = "patient".equals(f.verdict) ? "§6◔ patient flip§7 · " : "";
-            String line = badge + "exit " + Phos.coins(f.exitFast) + " fast" + fastNet
-                    + (f.exitFastHoldS != null ? " §8~" + compactDur(f.exitFastHoldS) + "§7" : "")
-                    + (f.exitPatient != null ? " · " + Phos.coins(f.exitPatient) + " patient" + patientNet
-                    + (f.exitPatientHoldS != null ? " §8~" + compactDur(f.exitPatientHoldS) + "§7" : "") : "");
-            Phos.text(g, font, "§7" + line + "§r", x, yy + 13, Phos.DIM);
+            boolean missingNumbers = f.exitFastNet == null || f.exitFastHoldS == null
+                    || (f.exitPatient != null
+                    && (f.exitPatientNet == null || f.exitPatientHoldS == null));
+            if (missingNumbers) {
+                Phos.text(g, font, GoldFields.locked("exits"), x, yy + 13, Phos.FAINT);
+            } else {
+                String fastNet = (f.exitFastNet >= 0 ? " §a+" : " §c-")
+                        + Phos.coins(Math.abs(f.exitFastNet)) + "§7";
+                String patientNet = f.exitPatientNet != null
+                        ? (f.exitPatientNet >= 0 ? " §a+" : " §c-")
+                        + Phos.coins(Math.abs(f.exitPatientNet)) + "§7" : "";
+                String badge = "patient".equals(f.verdict) ? "§6◔ patient flip§7 · " : "";
+                String line = badge + "exit " + Phos.coins(f.exitFast) + " fast" + fastNet
+                        + " §8~" + compactDur(f.exitFastHoldS) + "§7"
+                        + (f.exitPatient != null ? " · " + Phos.coins(f.exitPatient)
+                        + " patient" + patientNet + " §8~" + compactDur(f.exitPatientHoldS) + "§7" : "");
+                Phos.text(g, font, "§7" + line + "§r", x, yy + 13, Phos.DIM);
+            }
+        } else {
+            Phos.text(g, font, GoldFields.locked("exits"), x, yy + 13, Phos.FAINT);
         }
         // Survivorship honesty: hold medians are conditional on selling.
         String sell = f.fillPct != null
                 ? "sells " + Math.round(f.fillPct) + "% of the time"
-                : "sell-through unknown";
-        String tail = f.holdP90S != null ? " · slow case ~" + compactDur(f.holdP90S) : "";
+                : GoldFields.locked("sell-through");
+        String tail = f.holdP90S != null ? " · slow case ~" + compactDur(f.holdP90S)
+                : " · " + GoldFields.locked("slow case");
         Phos.text(g, font, "§8" + sell + tail + "§r", x, yy + 24, Phos.FAINT);
         // Manipulation drill-down: the explicit tells
         // behind the ⚑/⚐ mark, so a whale sees WHY before committing coins.
@@ -470,7 +493,10 @@ public final class MidasflipShellScreen extends PhosScreen {
             int col = "high".equals(f.manip) ? Phos.RED : Phos.YELLOW;
             String head = ("high".equals(f.manip) ? "⚑ HIGH" : "⚐ MED") + " manipulation risk";
             Phos.text(g, font, "§c" + head + "§r", x, yy + 37, col);
-            Phos.text(g, font, "§8" + String.join(" · ", f.manipReasons) + "§r", x, yy + 48, Phos.FAINT);
+            Phos.text(g, font, "§8" + String.join(" · ", f.manipReasons) + "§r",
+                    x, yy + 48, Phos.FAINT);
+        } else {
+            Phos.text(g, font, GoldFields.locked("manipulation risk"), x, yy + 37, Phos.FAINT);
         }
     }
 
@@ -561,12 +587,13 @@ public final class MidasflipShellScreen extends PhosScreen {
             y += 13;
 
             if (exp) {
-                double estPess = r.has("est_pess") ? r.get("est_pess").getAsDouble() : 0;
+                Double estPess = r.has("est_pess") ? r.get("est_pess").getAsDouble() : null;
                 double conf = r.has("conf") ? r.get("conf").getAsDouble() : 0;
                 int comps = r.has("comps") ? r.get("comps").getAsInt() : 0;
                 double spd = r.has("sales_per_day") ? r.get("sales_per_day").getAsDouble() : 0;
                 double netNext = r.has("net_at_next") ? r.get("net_at_next").getAsDouble() : 0;
-                Phos.text(g, font, "   §7est exit " + Phos.coins(estPess)
+                Phos.text(g, font, "   " + (estPess == null
+                        ? GoldFields.locked("est exit") : "§7est exit " + Phos.coins(estPess))
                         + " §8· conf " + String.format(Locale.ROOT, "%.2f", conf)
                         + " · " + comps + " comps · " + String.format(Locale.ROOT, "%.0f/d", spd) + "§r",
                         x, y, Phos.DIM);
@@ -646,7 +673,8 @@ public final class MidasflipShellScreen extends PhosScreen {
                     tag = "§6▲ undercut§r §8· market " + Phos.coins(m.floorUnit() == null ? 0 : m.floorUnit())
                             + (m.suggestUnit() != null ? " · reprice ~" + Phos.coins(m.suggestUnit()) : "")
                             + (shift.isEmpty() ? "" : " · profit " + shift + "§8")
-                            + (m.holdMedS() != null ? " · or hold ~" + ListingsWatch.compact(m.holdMedS()) : "") + "§r";
+                            + (m.holdMedS() != null ? " · or hold ~" + ListingsWatch.compact(m.holdMedS())
+                            : " · " + GoldFields.locked("hold")) + "§r";
                 } else if (m.stale()) {
                     tag = "§e◆ stale§r §8· est " + (m.suggestUnit() != null ? Phos.coins(m.suggestUnit()) : "?") + "§r";
                 } else {
@@ -672,7 +700,7 @@ public final class MidasflipShellScreen extends PhosScreen {
         }
         for (int i = ps.size() - 1; i >= 0; i--) {
             PositionLedger.Position p = ps.get(i);
-            String rec = p.exitFast == null ? "—"
+            String rec = p.exitFast == null ? GoldFields.locked("exits")
                     : Phos.coins(p.exitFast) + (p.exitPatient != null ? "/" + Phos.coins(p.exitPatient) : "");
             if ("sold".equals(p.state)) {
                 long vs = p.exitFast == null ? 0 : Math.round(p.soldPrice - p.exitFast);
@@ -939,9 +967,6 @@ public final class MidasflipShellScreen extends PhosScreen {
             filtersVisibility(g, x, y, half);
             return;
         }
-        // One line so the two panes are never confused (owner 2026-07-27).
-        Phos.text(g, font, "§8thresholds decide what the finder is ALLOWED to surface · "
-                + "drag a slider to its open end to switch it off§r", x, y - 12, Phos.FAINT);
         // Continuous sliders: drag a little, the value moves a little.
         // A MINIMUM is disabled at its LEFT end, not its right — say so.
         contSlider(g, x, y, half, "min profit", 0, 20_000_000, 50_000, config.minProfit,
@@ -1097,6 +1122,19 @@ public final class MidasflipShellScreen extends PhosScreen {
                 refresh();
             }
         });
+        // One line so the two panes are never confused (owner 2026-07-27),
+        // moved below the controls it describes (owner 2026-07-29): at the old
+        // y − 12 it drew straight through the chip row above it.
+        //
+        // Clamped, because "below all the other text" can be below the SCREEN.
+        // This pane's flow reaches ry+24 = 374 empty and 482 with six rules,
+        // while Minecraft's auto GUI scale on a 1080p display gives a 270-tall
+        // root — and nothing here scrolls, nor does Phos.text clip. Unclamped,
+        // the fix for an overlapping line was an invisible one. height−28
+        // keeps 12px clear of the flash message at height−16.
+        Phos.text(g, font, "§8thresholds decide what the finder is ALLOWED to surface · "
+                + "drag a slider to its open end to switch it off§r",
+                x, Math.min(ry + 24, height - 28), Phos.FAINT);
     }
 
     private void alerts(GuiGraphicsExtractor g, int x, int w) {
@@ -1117,8 +1155,6 @@ public final class MidasflipShellScreen extends PhosScreen {
      *  0/off = today's board. These sit ON TOP of the server gates; they
      *  can only hide, never surface anything the server didn't vouch for. */
     private void filtersVisibility(GuiGraphicsExtractor g, int x, int y, int half) {
-        Phos.text(g, font, "§8what's shown hides rows that already qualified · "
-                + "thresholds gate, these filter§r", x, y - 12, Phos.FAINT);
         contSlider(g, x, y, half, "min margin", 0, 50, 1, config.minMarginPct,
                 v -> v == 0 ? "off" : v + "%", v -> config.minMarginPct = (int) v);
         contSlider(g, x + half + 10, y, half, "min comps", 0, 50, 1, config.minComps,
@@ -1154,8 +1190,15 @@ public final class MidasflipShellScreen extends PhosScreen {
         contSlider(g, x + half + 10, y, half, "min comps", 1, 50, 1, config.verdictMinComps,
                 v -> String.valueOf(v), v -> config.verdictMinComps = (int) v);
         y += 34;
-        Phos.text(g, font, "§8display filters on top of the server gates — presets & SF1 codes carry them§r",
-                x, y, Phos.FAINT);
+        // Same defect as the thresholds pane (drawn at y−12, through the chip
+        // row), so the same move — but folded into the line that already
+        // lived here rather than added above it. Two stacked lines pushed this
+        // one to y=270, and Minecraft's auto GUI scale on a 1080p display
+        // gives a 270-tall root: it rendered exactly at the bottom edge and
+        // vanished. Nothing in this shell scrolls and Phos.text does not clip,
+        // so an extra 12px is not free.
+        Phos.text(g, font, "§8these hide rows that already qualified · thresholds gate, "
+                + "these filter · presets carry both§r", x, y, Phos.FAINT);
     }
 
     private void display(GuiGraphicsExtractor g, int x, int w, int mx, int my) {
@@ -1179,6 +1222,9 @@ public final class MidasflipShellScreen extends PhosScreen {
                 () -> config.overlayEnabled = !config.overlayEnabled);
         cycle(g, x + half + 10, y, half, "item tooltips: " + (config.itemTooltip ? "on" : "off"),
                 () -> config.itemTooltip = !config.itemTooltip);
+        y += 26;
+        cycle(g, x, y, half, "est. craft line: " + (config.craftPrice ? "on" : "off"),
+                () -> config.craftPrice = !config.craftPrice);
         y += 26;
         cycle(g, x, y, half, "sell-assist overlay: " + (config.sellOverlay ? "on" : "off"),
                 () -> config.sellOverlay = !config.sellOverlay);
@@ -1535,11 +1581,14 @@ public final class MidasflipShellScreen extends PhosScreen {
 
     private static String holdStr(Flip f) {
         if (f.holdMedS == null) {
-            return "§8no data§r";
+            return GoldFields.locked("hold");
         }
         // Honest range: fair-cohort median with the p90 slow tail — a
         // point estimate is exceeded half the time by construction.
         String med = compactDur(f.holdMedS);
+        if (f.holdP90S == null) {
+            return "~" + med + " · " + GoldFields.locked("slow case");
+        }
         if (f.holdP90S != null && f.holdP90S > f.holdMedS * 2) {
             return "~" + med + "§8–" + compactDur(f.holdP90S) + "§r";
         }

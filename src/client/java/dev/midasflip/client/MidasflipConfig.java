@@ -199,6 +199,13 @@ public final class MidasflipConfig {
     /** Append MidasFlip's data under matching items' hover tooltips. */
     public boolean itemTooltip = true;
 
+    /** The "est. craft" tooltip line — what one costs to make, against what
+     *  you are being asked to pay. Separately switchable (owner 2026-07-29):
+     *  it is the only tooltip line backed by a full ~150KB index rather than a
+     *  per-item fetch. The render is one map lookup, so this exists for the
+     *  fetch, not the frame. */
+    public boolean craftPrice = true;
+
     /** Sell-assist side panel (display-only) when listing an item.
      *  Always on by default (owner 2026-07-05). */
     public boolean sellOverlay = true;
@@ -269,7 +276,7 @@ public final class MidasflipConfig {
         if (f.confidence < effMinConf) return false;
         if (f.salesPerDay < effMinSpd) return false;
         if (maxHoldMin > 0 && f.holdMedS != null && f.holdMedS > maxHoldMin * 60L) return false;
-        if (!showFallingKnife && f.fallingKnife) return false;
+        if (!showFallingKnife && Boolean.TRUE.equals(f.fallingKnife)) return false;
         if (!showPatient && "patient".equals(f.verdict)) return false;
         if (hideCandied && f.compKey != null && f.compKey.contains("|c1")) return false;
 
@@ -279,7 +286,7 @@ public final class MidasflipConfig {
         if (minComps > 0 && f.comps < minComps) return false;
         if (minCost > 0 && f.buyPrice < minCost) return false;
         if (minFillPct > 0 && f.fillPct != null && f.fillPct < minFillPct) return false;
-        if (maxSpreadPct > 0 && f.spread * 100 > maxSpreadPct) return false;
+        if (maxSpreadPct > 0 && f.spread != null && f.spread * 100 > maxSpreadPct) return false;
         if (maxHoldP90Min > 0 && f.holdP90S != null && f.holdP90S > maxHoldP90Min * 60L) return false;
         if (hideDerived && f.source != null && !"comps".equals(f.source)) return false;
         if (hideTierBoosted && f.compKey != null && f.compKey.contains("|tb")) return false;

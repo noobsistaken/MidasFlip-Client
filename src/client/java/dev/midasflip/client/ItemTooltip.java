@@ -25,11 +25,13 @@ public final class ItemTooltip {
     private final MidasflipConfig config;
     private final FlipFeed feed;
     private final MidasflipApi api;
+    private final PositionLedger ledger;
 
-    public ItemTooltip(MidasflipConfig config, FlipFeed feed, MidasflipApi api) {
+    public ItemTooltip(MidasflipConfig config, FlipFeed feed, MidasflipApi api, PositionLedger ledger) {
         this.config = config;
         this.feed = feed;
         this.api = api;
+        this.ledger = ledger;
     }
 
     public void register() {
@@ -132,7 +134,18 @@ public final class ItemTooltip {
         // the lore-only menu path recovers ENCHANTS ONLY (see LoreMods).
         boolean lorePath = false; // NBT stripped → atoms are partial
         String path;
-        if (pet != null) {
+        // Same bucket-mismatch fix as the sell overlay (owner 2026-07-30).
+        // In an auction menu Hypixel strips ExtraAttributes, so there are no
+        // stars or recomb to derive from and the by-name path below resolves
+        // the CLEAN bucket — undervaluing the exact item the finder scored.
+        // If the ledger holds this item with the finder's own comp_key, that
+        // key is strictly better evidence than a name guess, so use it.
+        String ledgerKey = pet == null && skyblockId == null
+                ? ledgerKeyFor(stack) : null;
+        if (ledgerKey != null) {
+            path = "/value/" + java.net.URLEncoder.encode(
+                    ledgerKey, java.nio.charset.StandardCharsets.UTF_8);
+        } else if (pet != null) {
             String mods = ItemId.modAtoms(stack); // pet held item, if any
             path = (petType != null ? "/price/by-id/" : "/price/by-name/")
                     + java.net.URLEncoder.encode(
@@ -248,11 +261,11 @@ public final class ItemTooltip {
                         + "§8 · amber conf§r"));
                 if (lorePath) {
                     lines.add(Component.literal(
-                            "§8menu view — enchants counted, gems/HPB not visible§r"));
+                            "§8menu view · enchants counted, gems/HPB not visible§r"));
                 }
             }
             if (lowball) {
-                lines.add(Component.literal("§e⚠ starred/recombed — clean price, likely LOW§r"));
+                lines.add(Component.literal("§e⚠ starred/recombed · clean price, likely LOW§r"));
             }
         }
         // What it would cost to MAKE this instead of buying it (owner
@@ -285,6 +298,31 @@ public final class ItemTooltip {
                         + b + " bucket · EXP unavailable§r"));
             }
         }
+    }
+
+    /** The finder's exact comp_key for a stack we are holding, when the
+     *  ledger has an open position whose display name matches. Null when
+     *  there is no position, no key, or no confident name match: a guessed
+     *  key would price a DIFFERENT item, which is the whole failure this
+     *  exists to avoid. */
+    private String ledgerKeyFor(net.minecraft.world.item.ItemStack stack) {
+        if (ledger == null) {
+            return null;
+        }
+        String want = norm(SellOverlay.stripReforge(
+                SellOverlay.cleanName(stack.getHoverName().getString().replaceAll("§.", ""))));
+        if (want.isEmpty()) {
+            return null;
+        }
+        for (PositionLedger.Position p : ledger.recent(200)) {
+            if ("sold".equals(p.state) || p.compKey == null || p.compKey.isEmpty()) {
+                continue;
+            }
+            if (want.equals(norm(NameMap.pretty(p.itemId, p.compKey)))) {
+                return p.compKey;
+            }
+        }
+        return null;
     }
 
     /** "estimated craft price" — what one unit costs to make, from

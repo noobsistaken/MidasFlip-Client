@@ -257,7 +257,7 @@ public final class FlipFeed implements WebSocket.Listener {
         }
         synchronized (this) {
             if (partial.length() + data.length() > MAX_PARTIAL) {
-                Midasflip.LOG.warn("oversized ws frame — dropping buffer and reconnecting");
+                Midasflip.LOG.warn("oversized ws frame · dropping buffer and reconnecting");
                 partial.setLength(0);
                 webSocket.abort();
                 return null;

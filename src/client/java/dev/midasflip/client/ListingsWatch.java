@@ -209,7 +209,7 @@ public final class ListingsWatch {
             Chat.local(mc, "§e[MidasFlip]§r §6▲ undercut§r on §b"
                     + NameMap.pretty(m.itemId(), m.compKey()) + "§r: yours "
                     + Phos.coins(m.unitPrice()) + ", market " + Phos.coins(m.floorUnit())
-                    + (m.suggestUnit() != null ? " — reprice ~" + Phos.coins(m.suggestUnit()) : "")
+                    + (m.suggestUnit() != null ? " · reprice ~" + Phos.coins(m.suggestUnit()) : "")
                     + (shift.isEmpty() ? "" : " §8(profit " + shift + "§8)§r")
                     + hold + ". Your call, your clicks.");
         }

@@ -517,7 +517,7 @@ public final class MidasflipShellScreen extends PhosScreen {
         // Pro-gated server-side: on a definitive 402 show the honest hint;
         // no client entitlement logic (the mod only reflects the status).
         if (el != null && el.isJsonNull() && api.lastStatus("/auctions/bids") == 402) {
-            Phos.text(g, font, "§8pro feature — " + MidasflipConfig.SITE_HOST + "§r", x, y + 4, Phos.FAINT);
+            Phos.text(g, font, "§8pro feature · " + MidasflipConfig.SITE_HOST + "§r", x, y + 4, Phos.FAINT);
             return;
         }
         if (el == null || !el.isJsonArray()) {
@@ -601,7 +601,7 @@ public final class MidasflipShellScreen extends PhosScreen {
                 Phos.text(g, font, "   §anet at next bid +" + Phos.coins(netNext) + "§r", x, y, Phos.GREEN);
                 y += 11;
                 // The two honesty lines (staleness + coin-lock).
-                Phos.text(g, font, "   §8data up to ~90s old — verify the current bid in the auction view§r",
+                Phos.text(g, font, "   §8data up to ~90s old · verify the current bid in the auction view§r",
                         x, y, Phos.FAINT);
                 y += 11;
                 Phos.text(g, font, "   §8bids lock coins until the auction ends; outbid refunds are claimed manually§r",
@@ -627,14 +627,14 @@ public final class MidasflipShellScreen extends PhosScreen {
         if (!any) {
             // Endpoint returned [] — collector not yet deployed / no
             // candidates / TTL-expired during a stall. Calm empty state.
-            Phos.text(g, font, "§8no auction candidates right now — data refreshes every minute§r",
+            Phos.text(g, font, "§8no auction candidates right now · data refreshes every minute§r",
                     x, y + 2, Phos.FAINT);
             y += 14;
         } else if (shown == 0) {
             Phos.text(g, font, "§8nothing passes your margin/end-time filters right now§r", x, y + 2, Phos.FAINT);
             y += 14;
         }
-        Phos.text(g, font, "§8click a row for detail · data up to ~90s stale — verify the live bid before you commit§r",
+        Phos.text(g, font, "§8click a row for detail · data up to ~90s stale · verify the live bid before you commit§r",
                 x, y + 6, Phos.FAINT);
         y += 22;
 
@@ -695,7 +695,7 @@ public final class MidasflipShellScreen extends PhosScreen {
         session.ledger().refreshValuations(api);
         List<PositionLedger.Position> ps = session.ledger().recent(config.tradesPositionsMax);
         if (ps.isEmpty()) {
-            Phos.text(g, font, "§8no tracked trades yet — buy a flip and this fills itself§r", x, y, Phos.FAINT);
+            Phos.text(g, font, "§8no tracked trades yet · buy a flip and this fills itself§r", x, y, Phos.FAINT);
             return;
         }
         for (int i = ps.size() - 1; i >= 0; i--) {
@@ -793,7 +793,7 @@ public final class MidasflipShellScreen extends PhosScreen {
             Phos.text(g, font, dur == null || dur.isJsonNull() ? "instant"
                     : durStr(dur.getAsLong()), x + cols[4], y, Phos.DIM);
             JsonElement shr = r.get("profit_per_slot_hour");
-            Phos.text(g, font, shr == null || shr.isJsonNull() ? "—" : Phos.coins(shr.getAsDouble()),
+            Phos.text(g, font, shr == null || shr.isJsonNull() ? "·" : Phos.coins(shr.getAsDouble()),
                     x + cols[5], y, Phos.DIM);
             final String tid = id;
             zone(x, y - 1, w, 13, () -> expandedId = tid.equals(expandedId) ? null : tid);
@@ -807,10 +807,52 @@ public final class MidasflipShellScreen extends PhosScreen {
                 }
                 for (JsonElement ie : r.getAsJsonArray("inputs")) {
                     JsonObject in = ie.getAsJsonObject();
-                    Phos.text(g, font, "   §8" + shorten(NameMap.pretty(in.get("id").getAsString()), 30)
-                            + " ×" + in.get("count").getAsDouble()
+                    String legName = NameMap.pretty(in.get("id").getAsString());
+                    double need = in.get("count").getAsDouble();
+                    // One run. There is no run-count control yet; when one
+                    // arrives this is the single place that multiplies.
+                    long qty = (long) Math.ceil(need);
+                    String via = in.get("via").getAsString();
+                    boolean bazaar = "bazaar".equals(via);
+                    // A bazaar leg can be opened; an AH or forge leg cannot,
+                    // because there is no command that searches the auction
+                    // house by name. Those copy instead of sending — the row
+                    // says which, so a click is never a surprise.
+                    // The hint must match what the click will ACTUALLY do,
+                    // including in STRICT and with the send toggle off, or the
+                    // row promises an open and delivers a copy.
+                    boolean willSend = bazaar && config.bazaarLegSend
+                            && config.safetyMode == MidasflipConfig.SafetyMode.ASSISTED;
+                    String hint = willSend ? " §8· open ⏎§r"
+                            : bazaar ? " §8· copy /bz ⧉§r" : " §8· copy ⧉§r";
+                    boolean legHov = hovered(x, y - 1, w, 11, mx, my);
+                    if (legHov) {
+                        g.fill(x, y - 1, x + w, y + 10, Phos.PANEL_HI);
+                    }
+                    Phos.text(g, font, "   §8" + shorten(legName, 30)
+                            + " ×" + need
                             + " · " + Phos.coins(in.get("cost").getAsDouble())
-                            + " · " + in.get("via").getAsString() + "§r", x, y, Phos.FAINT);
+                            + " · " + via + hint + "§r", x, y, Phos.FAINT);
+                    zone(x, y - 1, w, 11, () -> {
+                        Minecraft mc = Minecraft.getInstance();
+                        if (bazaar) {
+                            actions.onBazaarLegClicked(mc, legName, qty);
+                        } else {
+                            // Display-only path: no command is ever built for
+                            // an AH or forge leg, so there is nothing here for
+                            // the cooldown or the send gate to govern.
+                            // Sanitized even though nothing is sent: legName
+                            // is server-chosen text, and this is the one place
+                            // a hostile /craft/evs could land arbitrary bytes
+                            // on an OS resource the user may paste anywhere.
+                            String safeLeg = ActionController.sanitizeQuery(legName);
+                            String copied = safeLeg + " x" + qty;
+                            mc.keyboardHandler.setClipboard(copied);
+                            AuditLog.record("clipboard", "craft_click",
+                                    "leg " + copied + " via=" + via);
+                            flash("copied '" + copied + "'");
+                        }
+                    });
                     y += 11;
                 }
             }
@@ -854,7 +896,7 @@ public final class MidasflipShellScreen extends PhosScreen {
                 || (el == null && !api.likelyDown()
                     && System.currentTimeMillis() - kindSince > 3_000);
         if (pro) {
-            Phos.text(g, font, "§8pro feature — " + MidasflipConfig.SITE_HOST + "§r", x, y, Phos.FAINT);
+            Phos.text(g, font, "§8pro feature · " + MidasflipConfig.SITE_HOST + "§r", x, y, Phos.FAINT);
         } else if (el != null && el.isJsonNull()) {
             // Definitive non-402 "no data" (e.g. 404 from an older server)
             // — never a forever-"loading…".
@@ -904,7 +946,7 @@ public final class MidasflipShellScreen extends PhosScreen {
             Phos.text(g, font, "§8nothing above the gates right now§r", x, y, Phos.FAINT);
             y += 13;
         }
-        Phos.text(g, font, "§8order flips: place buy + sell orders, wait for fills — /hour assumes full fill§r",
+        Phos.text(g, font, "§8order flips: place buy + sell orders, wait for fills · /hour assumes full fill§r",
                 x, y + 6, Phos.FAINT);
     }
 
@@ -1146,7 +1188,7 @@ public final class MidasflipShellScreen extends PhosScreen {
         y += 48;
         Phos.panel(g, x, y, w, 28);
         Phos.label(g, font, "quick-open", x + 8, y + 6);
-        Phos.text(g, font, "§8arrives next update — mouse-bindable one-press open§r", x + 8, y + 17, Phos.FAINT);
+        Phos.text(g, font, "§8arrives next update · mouse-bindable one-press open§r", x + 8, y + 17, Phos.FAINT);
     }
 
     /** "What's shown": client display filters over every field the server
@@ -1268,7 +1310,7 @@ public final class MidasflipShellScreen extends PhosScreen {
      *  HUD position is LOCAL-ONLY (not carried in presets/SF1 codes). */
     private void displayDensity(GuiGraphicsExtractor g, int x, int y, int half) {
         // --- HUD position (local-only) ---
-        Phos.label(g, font, "hud position (local — not shared in presets)", x, y);
+        Phos.label(g, font, "hud position (local · not shared in presets)", x, y);
         y += 14;
         cycle(g, x, y, half, "anchor: " + anchorLabel(config.hudAnchor), () -> {
             MidasflipConfig.HudAnchor[] vs = MidasflipConfig.HudAnchor.values();
@@ -1339,8 +1381,8 @@ public final class MidasflipShellScreen extends PhosScreen {
         boolean assisted = config.safetyMode == MidasflipConfig.SafetyMode.ASSISTED;
         Phos.panel(g, x, y, w, 56);
         Phos.label(g, font, "mode", x + 8, y + 6);
-        Phos.text(g, font, assisted ? "§6ASSISTED§r — one press sends /viewauction"
-                : "§aSTRICT§r — one press copies, you paste", x + 8, y + 18, Phos.CREAM);
+        Phos.text(g, font, assisted ? "§6ASSISTED§r · one input sends /viewauction, or /bz from a recipe leg"
+                : "§aSTRICT§r · one press copies, you paste", x + 8, y + 18, Phos.CREAM);
         Phos.text(g, font, "§8either way: one physical input = at most one action, never automated§r",
                 x + 8, y + 31, Phos.FAINT);
         textButton(g, x + 8, y + 43, assisted ? "switch to STRICT" : "switch to ASSISTED", () -> {
@@ -1378,7 +1420,7 @@ public final class MidasflipShellScreen extends PhosScreen {
 
     private void about(GuiGraphicsExtractor g, int x, int w) {
         int y = 38;
-        Phos.text(g, font, "§fMIDAS§6FLIP§r §7— auction intelligence for SkyBlock§r", x, y, Phos.CREAM);
+        Phos.text(g, font, "§fMIDAS§6FLIP§r §7· auction intelligence for SkyBlock§r", x, y, Phos.CREAM);
         y += 16;
         Phos.text(g, font, "§7every flip shown with its work: comps, confidence, exits§r", x, y, Phos.DIM);
         y += 12;
@@ -1571,7 +1613,7 @@ public final class MidasflipShellScreen extends PhosScreen {
         JsonObject wnd = ws.get(0).getAsJsonObject();
         String name = wnd.get("name").getAsString();
         if (wnd.get("active").getAsBoolean()) {
-            return "§e◆ " + shorten(name, 22) + " — active§r";
+            return "§e◆ " + shorten(name, 22) + " · active§r";
         }
         long mins = (Instant.parse(wnd.get("starts").getAsString()).toEpochMilli()
                 - System.currentTimeMillis()) / 60_000;

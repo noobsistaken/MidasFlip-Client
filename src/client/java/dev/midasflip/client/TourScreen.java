@@ -43,7 +43,10 @@ public final class TourScreen extends PhosScreen {
          * Bump when the deck changes enough to be worth re-showing.
          * A config that has already seen this version never sees it again.
          */
-        public static final int VERSION = 1;
+        // Bumped to 2 (2026-07-30): card 1 understated the send surface,
+        // naming only /viewauction. A corrected deck nobody is re-shown
+        // is not a disclosure, so existing users see it once more.
+        public static final int VERSION = 2;
 
         /** One card: a title, an opening line, the body, and a closing note. */
         public record Card(String title, String lead, List<String> body, String foot) {}
@@ -56,7 +59,7 @@ public final class TourScreen extends PhosScreen {
                                 "It finds flips. You click. The mod never plays for you.",
                                 "[J] opens this menu. [K] toggles the on-screen board.",
                                 "[O] opens the best flip. STRICT copies the command,",
-                                "ASSISTED sends /viewauction on your keypress."),
+                                "ASSISTED sends /viewauction, or /bz from a recipe leg."),
                         "This is lower-risk by architecture, not a promise."),
 
                 new Card("The board",
@@ -118,7 +121,7 @@ public final class TourScreen extends PhosScreen {
 
     /** @param parent screen to return to (null on first run = back to the game). */
     public TourScreen(Screen parent, MidasflipConfig config) {
-        super(Component.literal("MidasFlip — tour"));
+        super(Component.literal("MidasFlip · tour"));
         this.parent = parent;
         this.config = config;
     }

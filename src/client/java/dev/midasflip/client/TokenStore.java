@@ -267,7 +267,7 @@ public final class TokenStore {
             byte[] plain = c.doFinal(blob, 12, blob.length - 12);
             return new String(plain, StandardCharsets.UTF_8);
         } catch (Exception e) { // corrupt/foreign file = no token, never crash
-            Midasflip.LOG.warn("token file unreadable — treating as signed out: {}", e.toString());
+            Midasflip.LOG.warn("token file unreadable · treating as signed out: {}", e.toString());
             return "";
         }
     }

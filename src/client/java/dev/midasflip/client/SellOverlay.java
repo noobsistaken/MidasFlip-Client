@@ -252,6 +252,17 @@ public final class SellOverlay {
         boolean petTierBoosted = pet != null && ItemId.petTierBoosted(stack);
         boolean exactPetNbt = petExp != null && petType != null && petTier != null;
         PositionLedger.Position pos = findPosition(stack, skyblockId, itemName, pet);
+        // When NBT is stripped we have no stars/recomb to derive a bucket
+        // from, so the by-name path below resolves the CLEAN bucket and
+        // undervalues a starred or recombobulated item. The ledger position
+        // already holds the exact comp_key the FINDER used to score this buy,
+        // so prefer it: the two panels then agree by construction instead of
+        // by coincidence. Only used when we cannot do better ourselves, and
+        // only for an exact-key position (a legacy id-only row has no key).
+        // Reported live 2026-07-30: finder said +6.5M, sell overlay said the
+        // same item was worth 8M less, because it had priced the base item.
+        boolean useLedgerKey = pet == null && skyblockId == null
+                && pos != null && pos.compKey != null && !pos.compKey.isEmpty();
         boolean useLedgerPetKey = pet != null && petExp == null
                 && PositionLedger.hasCurrentPetKey(pos);
 
@@ -284,7 +295,7 @@ public final class SellOverlay {
             h += 11;                       // "incl. modifiers +X · amber" line
         }
         if (maybeLoreDecomposed) {
-            h += 11;                       // "menu view — enchants only" line
+            h += 11;                       // "menu view · enchants only" line
         }
         int guiRight = screenW / 2 + GUI_WIDTH / 2;
         int x = guiRight + 8;
@@ -330,7 +341,9 @@ public final class SellOverlay {
         // exact atoms; the lore-only menu path recovers ENCHANTS ONLY.
         boolean lorePath = false;
         String path;
-        if (pet != null) {
+        if (useLedgerKey) {
+            path = "/value/" + URLEncoder.encode(pos.compKey, StandardCharsets.UTF_8);
+        } else if (pet != null) {
             // Pet type comes from the display name ("[Lvl N] Ender Dragon");
             // the NBT id for pets is just "PET". Exact NBT sends RAW EXP so
             // the backend resolves the collector bucket. If this menu
@@ -407,7 +420,7 @@ public final class SellOverlay {
             return;
         }
         if (el == null || !el.isJsonObject()) {
-            Phos.text(g, font, api.likelyDown() ? "§coffline — start tunnel§r" : "§8pricing…§r",
+            Phos.text(g, font, api.likelyDown() ? "§coffline · start tunnel§r" : "§8pricing…§r",
                     cx, cy, Phos.FAINT);
             return;
         }
@@ -485,7 +498,7 @@ public final class SellOverlay {
             if (lorePath) {
                 // Lore path saw enchants only (LoreMods scope) — say so, so
                 // the softer number isn't read as a complete valuation.
-                Phos.text(g, font, "§8menu view — enchants only, gems/HPB unseen§r",
+                Phos.text(g, font, "§8menu view · enchants only, gems/HPB unseen§r",
                         cx, cy, Phos.FAINT);
                 cy += 11;
             }
@@ -507,7 +520,7 @@ public final class SellOverlay {
                 : "";
         String note;
         if (lowball) {
-            note = "§e⚠ starred/recombed — clean price, likely LOW§r";
+            note = "§e⚠ starred/recombed · clean price, likely LOW§r";
         } else if (resp.has("bazaar")) {
             note = "§8bazaar item · fast=instasell · wait=sell offer§r";
         } else if (pet != null) {
@@ -581,7 +594,7 @@ public final class SellOverlay {
     private void row(GuiGraphicsExtractor g, net.minecraft.client.gui.Font font,
                      int x, int y, String label, Double price, Double netProfitDelta) {
         if (price == null) {
-            Phos.text(g, font, "§7" + label + " §8—§r", x, y, Phos.DIM);
+            Phos.text(g, font, "§7" + label + " §8·§r", x, y, Phos.DIM);
             return;
         }
         String net = "";

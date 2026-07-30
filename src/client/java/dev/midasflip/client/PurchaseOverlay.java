@@ -113,7 +113,7 @@ public final class PurchaseOverlay {
                     AuditLog.record("overlay_identity_mismatch", "render",
                             flip.uuid + " expected=" + flip.itemId);
                     Chat.local(Minecraft.getInstance(), "§e[MidasFlip]§r auction shown doesn't match the flip"
-                            + " (expected §b" + flip.itemId + "§r) — overlay off, GUI is normal.");
+                            + " (expected §b" + flip.itemId + "§r) · overlay off, GUI is normal.");
                     return;
                 } else {
                     return; // pending — contents not in yet; nothing rendered
@@ -147,7 +147,7 @@ public final class PurchaseOverlay {
                 // Fail visible, never guess a slot.
                 active[0] = false;
                 AuditLog.record("overlay_no_buy_slot", "mouse0", flip.uuid);
-                Chat.local(mc, "§e[MidasFlip]§r couldn't find the buy slot — overlay off, GUI is normal.");
+                Chat.local(mc, "§e[MidasFlip]§r couldn't find the buy slot · overlay off, GUI is normal.");
                 return false;
             }
             // Click-time identity re-check (defense-in-depth): if Hypixel
@@ -158,7 +158,7 @@ public final class PurchaseOverlay {
             if (checkIdentity(cs, flip, 0L) != IDENTITY_VERIFIED) {
                 active[0] = false;
                 AuditLog.record("overlay_identity_lost_at_click", "mouse0", flip.uuid);
-                Chat.local(mc, "§e[MidasFlip]§r auction changed under the overlay — off, GUI is normal.");
+                Chat.local(mc, "§e[MidasFlip]§r auction changed under the overlay · off, GUI is normal.");
                 return false;
             }
             armed[0] = false;
@@ -231,8 +231,42 @@ public final class PurchaseOverlay {
                     && SellOverlay.norm(pn.type()).equals(wantType);
         }
         String base = SellOverlay.stripReforge(SellOverlay.cleanName(raw));
-        return SellOverlay.norm(base).equals(flip.itemId)
-                && (flip.count < 1 || stack.getCount() == flip.count);
+        boolean countOk = flip.count < 1 || stack.getCount() == flip.count;
+        if (!countOk) {
+            return false;
+        }
+        // Possessives. norm() maps an apostrophe to "_", so "Divan's Leggings"
+        // became DIVAN_S_LEGGINGS and never matched anything. Hypixel then
+        // uses BOTH conventions for the id, with no rule that predicts which:
+        //
+        //   "Divan's Leggings"  -> DIVAN_LEGGINGS    (drops the s)
+        //   "Builder's Wand"    -> BUILDERS_WAND     (keeps the s)
+        //
+        // so both are tried. Reported live 2026-07-30 on DIVAN_LEGGINGS and
+        // again on BUILDERS_WAND; between them this covers the whole "X's Y"
+        // class, which includes all of the dragon armour.
+        //
+        // Done here rather than in norm(), which the sell overlay shares.
+        // This cannot widen the check onto a DIFFERENT item: every candidate
+        // is derived from the single display name the player is already
+        // looking at, so all it adds is the spelling the id actually uses.
+        for (String candidate : new String[]{base, keepPossessiveS(base), dropPossessiveS(base)}) {
+            if (SellOverlay.norm(candidate).equals(flip.itemId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** "Builder's Wand" -> "Builders Wand" (BUILDERS_WAND). */
+    private static String keepPossessiveS(String s) {
+        return s == null ? "" : s.replace("'", "").replace("’", "");
+    }
+
+    /** "Divan's Leggings" -> "Divan Leggings" (DIVAN_LEGGINGS). */
+    private static String dropPossessiveS(String s) {
+        return s == null ? "" : s.replace("'s ", " ").replace("’s ", " ")
+                .replaceAll("['’]s$", "").replace("'", "").replace("’", "");
     }
 
     /** "v1|PET|SHEEP|..." → "SHEEP"; null when the key isn't a pet key. */
@@ -291,7 +325,7 @@ public final class PurchaseOverlay {
         y += 18;
         Phos.textShadow(gfx, mc.font, "§a▶ click anywhere here to buy§r", cx, y, 0xFFFFFFFF);
         y += 12;
-        Phos.textShadow(gfx, mc.font, "§8hypixel's own confirm comes next — that click is yours too§r", cx, y, 0xFFFFFFFF);
+        Phos.textShadow(gfx, mc.font, "§8hypixel's own confirm comes next · that click is yours too§r", cx, y, 0xFFFFFFFF);
 
         Phos.textShadow(gfx, mc.font, "§c✕ cancel§r", cancelEdge / 2 - 20, h / 2 - 6, 0xFFFFFFFF);
         Phos.textShadow(gfx, mc.font, "§8closes auction§r", cancelEdge / 2 - 32, h / 2 + 8, 0xFFFFFFFF);

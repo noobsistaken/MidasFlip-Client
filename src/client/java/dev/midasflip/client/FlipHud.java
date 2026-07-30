@@ -262,7 +262,7 @@ public final class FlipHud {
         // Name the ACTUAL bound key, not a hardcoded O.
         String keyName = MidasflipClient.openBest == null ? "?"
                 : MidasflipClient.openBest.getTranslatedKeyMessage().getString();
-        String hint = "press [" + keyName + "] — open best flip";
+        String hint = "press [" + keyName + "] · open best flip";
         var font = mc.font;
         int boxW = Math.max(Math.max(Phos.w(font, name), Phos.w(font, stat)), Phos.w(font, hint)) + 24;
         int boxH = 50;

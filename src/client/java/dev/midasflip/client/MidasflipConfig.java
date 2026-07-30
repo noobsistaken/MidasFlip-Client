@@ -6,6 +6,7 @@ import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Locale;
 import java.nio.file.Path;
 
 /**
@@ -63,6 +64,62 @@ public final class MidasflipConfig {
      *  existing saved configs keep their own value — only the default for
      *  fresh installs changed from the dev localhost:8000. */
     public String apiBase = DEFAULT_API_BASE;
+
+    /** The accepted form of {@link #apiBase}, or {@link #DEFAULT_API_BASE}
+     *  when the supplied value is not one we will send a bearer token to.
+     *
+     *  <p>Rule: https anywhere, plain http ONLY on loopback. Plain http to a
+     *  remote host puts the token on the wire in clear; a non-http scheme is
+     *  not something this client speaks. Trailing slashes are trimmed
+     *  because every call site concatenates a path directly onto this.
+     *
+     *  <p>Fails CLOSED to the default instead of refusing to start: a bad
+     *  value should cost you a warning line, not your game session.
+     *
+     *  <p>Minecraft-free and static so it is directly unit-testable. */
+    static String safeApiBase(String raw) {
+        String s = raw == null ? "" : raw.strip();
+        while (s.endsWith("/")) {
+            s = s.substring(0, s.length() - 1);
+        }
+        if (s.isEmpty()) {
+            return DEFAULT_API_BASE;
+        }
+        String lower = s.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("https://") && lower.length() > "https://".length()) {
+            return s;
+        }
+        if (!lower.startsWith("http://")) {
+            return DEFAULT_API_BASE;
+        }
+        String hostport = s.substring("http://".length());
+        int slash = hostport.indexOf('/');
+        if (slash >= 0) {
+            hostport = hostport.substring(0, slash);
+        }
+        // Reject userinfo outright. The split below takes the text before the
+        // first ':', which in "localhost:pass@evil.example.com" is the
+        // USERNAME — so the authority read as loopback while the request went
+        // to evil.example.com, carrying the bearer token in cleartext. Found
+        // in review 2026-07-30 in this very function. No legitimate apiBase
+        // carries credentials, so the whole form is refused rather than
+        // parsed.
+        if (hostport.indexOf('@') >= 0) {
+            return DEFAULT_API_BASE;
+        }
+        String host;
+        if (hostport.startsWith("[")) {          // IPv6 literal: [::1]:8000
+            int close = hostport.indexOf(']');
+            host = close > 0 ? hostport.substring(0, close + 1) : hostport;
+        } else {
+            int colon = hostport.indexOf(':');
+            host = colon >= 0 ? hostport.substring(0, colon) : hostport;
+        }
+        host = host.toLowerCase(Locale.ROOT);
+        boolean loopback = host.equals("localhost") || host.equals("127.0.0.1")
+                || host.equals("[::1]");
+        return loopback ? s : DEFAULT_API_BASE;
+    }
     // In-memory only (transient = Gson never writes OR reads it). The
     // token lives in TokenStore (OS keychain, else owner-only obfuscated
     // file) — it stopped being part of midasflip.json in the GPL release:
@@ -124,6 +181,19 @@ public final class MidasflipConfig {
      *  OFF by default; only effective in ASSISTED mode; only on auction
      *  GUIs this mod itself opened. */
     public boolean purchaseOverlay = false;
+
+    /** Bazaar-search send from a craft recipe's ingredient leg (owner spec
+     *  §13/§14 amendment 2026-07-30): OFF by default; only effective in
+     *  ASSISTED mode.
+     *
+     *  <p>A separate toggle on purpose, following the purchase overlay's
+     *  precedent rather than riding on ASSISTED alone. Someone who turned
+     *  ASSISTED on consented to ONE command, {@code /viewauction}. Shipping a
+     *  second command under that same consent would mean an existing user
+     *  updates the mod and their client sends something they never agreed to
+     *  — which is exactly the "the mod acted for me" claim the audit log
+     *  exists to refute. Off by default means the claim never arises. */
+    public boolean bazaarLegSend = false;
 
     // ---- Auctions tab (bid-flip candidates from /auctions/bids). OFF by
     // default (owner: "should also be toggleable" — when off the sidebar
@@ -340,7 +410,7 @@ public final class MidasflipConfig {
                             } else {
                                 // Keep working this session, but say so plainly.
                                 cfg.apiToken = legacy;
-                                Midasflip.LOG.warn("token store unavailable — token kept in memory only this session");
+                                Midasflip.LOG.warn("token store unavailable · token kept in memory only this session");
                             }
                         }
                         // The point of the migration is that plaintext LEAVES
@@ -348,7 +418,7 @@ public final class MidasflipConfig {
                         // it, even if the store already had a (newer) token.
                         // Only skip when we would lose the sole copy.
                         if (!cfg.apiToken.isEmpty() && !cfg.save()) {
-                            Midasflip.LOG.warn("could not rewrite midasflip.json — legacy plaintext token still on disk");
+                            Midasflip.LOG.warn("could not rewrite midasflip.json · legacy plaintext token still on disk");
                         }
                     }
                     if (fromLegacy) {
@@ -359,7 +429,7 @@ public final class MidasflipConfig {
                     }
                     return cfg;
                 }
-                Midasflip.LOG.warn("config was empty/blank — using safe defaults");
+                Midasflip.LOG.warn("config was empty/blank · using safe defaults");
             }
         } catch (IOException | RuntimeException e) {
             Midasflip.LOG.warn("config unreadable, using defaults: {}", e.toString());
@@ -375,8 +445,25 @@ public final class MidasflipConfig {
      *  must not produce a nonsense board. */
     void normalize() {
         if (safetyMode == null) {
-            Midasflip.LOG.warn("config safetyMode unrecognized — forcing STRICT (never-send)");
+            Midasflip.LOG.warn("config safetyMode unrecognized · forcing STRICT (never-send)");
             safetyMode = SafetyMode.STRICT;
+        }
+        // The bearer token follows apiBase, so whoever controls apiBase
+        // receives it. HTTPS, or loopback for local development — anything
+        // else falls back to the shipped default rather than being honoured
+        // (external review 2026-07-30).
+        //
+        // This is NOT remotely reachable: apiBase is excluded from presets
+        // and SF1 share codes (see Preset), so a pasted code can never move
+        // it. What this closes is the hand-edited config — "paste this into
+        // midasflip.json to fix your HUD" is a plausible thing to be told in
+        // a Discord, and plain http:// would then ship the token in clear to
+        // a host of someone else's choosing.
+        String base = safeApiBase(apiBase);
+        if (!base.equals(apiBase)) {
+            Midasflip.LOG.warn("config apiBase {} is neither https nor loopback · using {}",
+                    apiBase, base);
+            apiBase = base;
         }
         if (minLiquidity == null) minLiquidity = Liquidity.MED;
         if (sortMode == null) sortMode = SortMode.SCORE;

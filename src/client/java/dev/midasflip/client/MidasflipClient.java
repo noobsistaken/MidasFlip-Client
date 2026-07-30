@@ -55,7 +55,7 @@ public final class MidasflipClient implements ClientModInitializer {
 
         // Item hover tooltip — read-only, appends MidasFlip data to matching
         // items (owner request); toggle in Display.
-        new ItemTooltip(config, feed, api).register();
+        new ItemTooltip(config, feed, api, session.ledger()).register();
 
         // Sell-assist overlay — display-only price help when listing an
         // item; ledger cost-basis or market estimate, forwards nothing.
@@ -80,7 +80,7 @@ public final class MidasflipClient implements ClientModInitializer {
                 (extractor, tickCounter) -> hud.render(extractor));
         ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> feed.stop());
 
-        Midasflip.LOG.info("MidasFlip loaded — mode={}, overlay={}", config.safetyMode, config.overlayEnabled);
+        Midasflip.LOG.info("MidasFlip loaded · mode={}, overlay={}", config.safetyMode, config.overlayEnabled);
     }
 
     private void onTick(Minecraft mc) {

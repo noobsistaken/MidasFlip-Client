@@ -11,19 +11,19 @@ public final class Flip {
     @SerializedName("buy_price") public long buyPrice;
     public int count;
     @SerializedName("est_base") public double estBase;
-    @SerializedName("est_pess") public double estPess;
-    @SerializedName("est_opt") public double estOpt;
+    @SerializedName("est_pess") public Double estPess;
+    @SerializedName("est_opt") public Double estOpt;
     @SerializedName("net_profit") public double netProfit;
     @SerializedName("net_margin_pct") public double netMarginPct;
     public double confidence;
     public int comps;
-    public double spread;   // bucket dispersion (relative MAD fraction)
+    public Double spread;   // bucket dispersion (relative MAD fraction)
     public String source;
     @SerializedName("sales_per_day") public double salesPerDay;
     @SerializedName("hold_med_s") public Long holdMedS;   // fair-cohort median
     @SerializedName("hold_p90_s") public Long holdP90S;   // honest slow tail
     @SerializedName("fill_pct") public Double fillPct;    // BIN sell-through %
-    @SerializedName("falling_knife") public boolean fallingKnife;
+    @SerializedName("falling_knife") public Boolean fallingKnife;
     /** "" / null = normal; "patient" = fast exit underwater on the
      *  pess-anchored quote, patient target still clears buy (P2-final).
      *  Display/filter only — the server already decided emission. */

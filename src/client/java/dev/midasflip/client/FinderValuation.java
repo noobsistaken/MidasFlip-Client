@@ -63,6 +63,7 @@ final class FinderValuation {
     }
 
     private static double number(JsonObject o, String key) {
-        return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsDouble() : 0;
+        Double value = GoldFields.optNum(o, key);
+        return value == null ? 0 : value;
     }
 }

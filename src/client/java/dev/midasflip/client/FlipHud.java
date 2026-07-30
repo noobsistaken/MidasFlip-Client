@@ -94,7 +94,7 @@ public final class FlipHud {
             String profitCol = f.gone ? "§8" : "§a+";
             String row = String.format("%s%s%s%s%s%s%s§r %s → %s%s§r (%.0f%%) §7c%.2f · %s§r",
                     Rule.starred(config.rules, f) ? "§e★§r " : "",
-                    f.fallingKnife && !f.gone ? "§c⚠§r " : "",
+                    Boolean.TRUE.equals(f.fallingKnife) && !f.gone ? "§c⚠§r " : "",
                     !f.gone && "high".equals(f.manip) ? "§c⚑§r " : !f.gone && "med".equals(f.manip) ? "§6⚐§r " : "",
                     !f.gone && "patient".equals(f.verdict) ? "§6◔§r " : "",
                     tier,

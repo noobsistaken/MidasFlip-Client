@@ -422,6 +422,9 @@ public final class SellOverlay {
         // never a competing recommendation that can drag the target below
         // the engine's own fair downside value.
         FinderValuation.Result valuation = FinderValuation.from(est, resp);
+        Double pess = GoldFields.optNum(est, "pess");
+        Double opt = GoldFields.optNum(est, "opt");
+        boolean bandsMissing = pess == null || opt == null;
         Double marketSuggest = valuation.target() == null
                 ? null : valuation.target() * units;
         // The server answers with a flag when we ASKED for a gear bucket
@@ -453,7 +456,10 @@ public final class SellOverlay {
         Phos.text(g, font, "§7finder valuation" + (units > 1 ? " §f×" + units : "")
                 + (stale ? " §c· stale§r" : "") + " §8(current)§r", cx, cy, Phos.DIM);
         cy += 13;
-        if (valuation.backed()) {
+        if (bandsMissing) {
+            Phos.text(g, font, GoldFields.locked("bands"), cx, cy, Phos.FAINT);
+            cy += 13;
+        } else if (valuation.backed()) {
             row(g, font, cx, cy, "sell target", valuation.target() * units, null);
             cy += 11;
             row(g, font, cx, cy, "fair", valuation.fair() * units, null);
@@ -470,8 +476,10 @@ public final class SellOverlay {
             // MANDATORY marker (spec transparency): a decomposed number is
             // base bucket + learned modifier deltas, amber-capped — the
             // sum is what the modifiers added, ×units for stack display.
-            double contribSum = ItemTooltip.modContribSum(resp) * units;
-            Phos.text(g, font, "§7incl. modifiers §f+" + Phos.coins(contribSum)
+            Double contributions = ItemTooltip.modContribSum(resp);
+            Phos.text(g, font, contributions == null
+                    ? GoldFields.locked("incl. modifiers")
+                    : "§7incl. modifiers §f+" + Phos.coins(contributions * units)
                     + "§8 · amber§r", cx, cy, Phos.DIM);
             cy += 11;
             if (lorePath) {

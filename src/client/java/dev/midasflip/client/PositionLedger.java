@@ -114,7 +114,7 @@ public final class PositionLedger {
         p.buyPrice = paid;
         p.exitFast = f.exitFast;
         p.exitPatient = f.exitPatient;
-        p.waitPrice = f.estOpt > 0 ? f.estOpt : null;
+        p.waitPrice = f.estOpt != null && f.estOpt > 0 ? f.estOpt : null;
         p.exitFastNet = f.exitFastNet;
         p.exitPatientNet = f.exitPatientNet;
         p.boughtAtMs = System.currentTimeMillis();

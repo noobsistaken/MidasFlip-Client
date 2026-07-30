@@ -41,6 +41,9 @@ public final class Rule {
             return false;
         }
         Object v = extract(f);
+        if (v == null) {
+            return false;
+        }
         if (v instanceof String s) {
             String want = value.toLowerCase(Locale.ROOT);
             String have = s.toLowerCase(Locale.ROOT);
@@ -83,7 +86,7 @@ public final class Rule {
             case "score" -> f.score;
             case "item_id" -> f.itemId == null ? "" : f.itemId;
             case "family" -> f.family == null ? "" : f.family;
-            case "falling_knife" -> f.fallingKnife ? 1.0 : 0.0;
+            case "falling_knife" -> f.fallingKnife == null ? null : f.fallingKnife ? 1.0 : 0.0;
             default -> "";
         };
     }

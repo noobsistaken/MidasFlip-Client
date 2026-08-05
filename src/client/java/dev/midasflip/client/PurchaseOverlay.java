@@ -235,21 +235,34 @@ public final class PurchaseOverlay {
         if (!countOk) {
             return false;
         }
-        // Possessives. norm() maps an apostrophe to "_", so "Divan's Leggings"
-        // became DIVAN_S_LEGGINGS and never matched anything. Hypixel then
-        // uses BOTH conventions for the id, with no rule that predicts which:
+        // Identity by the server's OWN id->name map first, and only fall
+        // back to guessing at the spelling.
         //
-        //   "Divan's Leggings"  -> DIVAN_LEGGINGS    (drops the s)
-        //   "Builder's Wand"    -> BUILDERS_WAND     (keeps the s)
+        // The old check normalized the display name and compared it to the
+        // item id, which silently assumes the two look alike. For most items
+        // they do. For a whole armour class they do not, and there is no
+        // string rule that could ever bridge it:
         //
-        // so both are tried. Reported live 2026-07-30 on DIVAN_LEGGINGS and
-        // again on BUILDERS_WAND; between them this covers the whole "X's Y"
-        // class, which includes all of the dragon armour.
+        //   POWER_WITHER_CHESTPLATE -> "Necron's Chestplate"
+        //   TANK_WITHER_CHESTPLATE  -> "Goldor's Chestplate"
+        //   WISE_WITHER_CHESTPLATE  -> "Storm's Chestplate"
+        //   SPEED_WITHER_CHESTPLATE -> "Maxor's Chestplate"
         //
-        // Done here rather than in norm(), which the sell overlay shares.
-        // This cannot widen the check onto a DIFFERENT item: every candidate
-        // is derived from the single display name the player is already
-        // looking at, so all it adds is the spelling the id actually uses.
+        // so the overlay refused every Wither-armour purchase and fell back
+        // to a plain GUI (reported live 2026-07-30, after two earlier
+        // attempts to patch this with apostrophe handling). NameMap is the
+        // same map the tooltip and the board already trust, and it makes the
+        // spelling question moot rather than answering it.
+        String want = SellOverlay.norm(NameMap.pretty(flip.itemId, flip.compKey));
+        if (!want.isEmpty() && want.equals(SellOverlay.norm(base))) {
+            return true;
+        }
+        // Fallback for ids the map has not learned yet: the id itself, plus
+        // the two possessive spellings Hypixel uses ("Divan's Leggings" ->
+        // DIVAN_LEGGINGS drops the s, "Builder's Wand" -> BUILDERS_WAND
+        // keeps it). Every candidate derives from the one display name the
+        // player is already looking at, so this can only add the spelling
+        // the id actually uses, never a different item.
         for (String candidate : new String[]{base, keepPossessiveS(base), dropPossessiveS(base)}) {
             if (SellOverlay.norm(candidate).equals(flip.itemId)) {
                 return true;

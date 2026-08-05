@@ -10,16 +10,19 @@ import java.util.regex.Pattern;
  * structural, not configurable:
  *
  * <ul>
- *   <li>This class sends exactly TWO chat commands, both through the
+ *   <li>This class sends exactly THREE chat commands, all through the
  *       normal command path: {@code /viewauction <uuid>} from
  *       {@link #onOpenKeyPressed} (a physical keypress), and
- *       {@code /bz <item name>} from {@link #onBazaarLegClicked} (a
- *       physical click on a craft recipe's bazaar leg; owner spec
- *       §13/§14 amendment 2026-07-30, OFF by default behind
- *       {@code bazaarLegSend}, ASSISTED-only, sharing this class's single
- *       cooldown clock with the open path so the two together cannot
- *       exceed one action per floor). Neither involves mouse movement or
- *       an auto-opened GUI.
+ *       {@code /bz <name>} or {@code /ahs <name>} from
+ *       {@link #onCraftLegClicked} (a physical click on a craft recipe's
+ *       ingredient, the verb chosen by the market that ingredient trades
+ *       on; owner spec §13/§14 amendment 2026-07-30). The leg sends need
+ *       BOTH {@code craftLegSend} — off by default, its own row in the
+ *       Safety pane — AND ASSISTED: enabling assisted mode alone is
+ *       consent for {@code /viewauction} and nothing more. All of them
+ *       share this class's single cooldown clock, so together they cannot
+ *       exceed one action per floor. None involves mouse movement or an
+ *       auto-opened GUI.
  *       The mod's ONE other game action lives in {@link PurchaseOverlay}
  *       (owner spec §13/§14 amendment, 2026-07-05): opt-in, OFF by
  *       default, ASSISTED-only, attaching only to auction GUIs this mod
@@ -30,7 +33,7 @@ import java.util.regex.Pattern;
  *       nothing ever.</li>
  *   <li>Both fire ONLY from a physical input: {@link #onOpenKeyPressed}
  *       is wired exclusively to a keypress in {@link MidasflipClient}, and
- *       {@link #onBazaarLegClicked} only from a click zone registered while
+ *       {@link #onCraftLegClicked} only from a click zone registered while
  *       drawing a craft row in a screen the user opened. There is no timer,
  *       no packet hook, no detection-triggered variant of either.</li>
  *   <li>It FAILS SAFE: only the exact ASSISTED mode sends; every other
@@ -43,7 +46,7 @@ import java.util.regex.Pattern;
 public final class ActionController {
     // TWO backend-supplied values now reach a game input, each with its own
     // guard. The auction UUID must be exactly 32 hex chars (dashed form
-    // stripped upstream) — this regex. The bazaar item NAME is free text, so
+    // stripped upstream) — this regex. The ingredient NAME is free text, so
     // it gets sanitizeQuery() instead: a character allowlist, because a regex
     // that validated a name would just be the allowlist written backwards.
     // Neither can inject command bytes.
@@ -132,45 +135,53 @@ public final class ActionController {
         return true;
     }
 
-    /** Bazaar-assisted open from the craft board's ingredient list (owner
-     *  2026-07-30). One physical click, at most one command — the same
-     *  contract as {@link #onOpenKeyPressed}, deliberately the same shape so
-     *  the two paths cannot drift apart, and sharing the same cooldown clock
-     *  so clicking legs and pressing the open key cannot together exceed one
+    /** Search-open from the craft board's ingredient list (owner spec
+     *  §13/§14 amendment 2026-07-30). One physical click, at most one
+     *  command, deliberately the same shape as {@link #onOpenKeyPressed} and
+     *  sharing its cooldown clock so the surfaces together cannot exceed one
      *  action per floor.
      *
-     *  <p>ASSISTED sends {@code /bz <name>} and puts the QUANTITY on the
-     *  clipboard, because the amount still has to be typed into Hypixel's
-     *  order sign and the mod must never type it. STRICT sends nothing and
-     *  puts the COMMAND on the clipboard, which is what STRICT means; the
-     *  quantity is stated in chat instead, since one clipboard cannot carry
-     *  both.
+     *  <p>The LEG'S OWN SOURCE picks the command, because that is the
+     *  market the ingredient actually trades on: a bazaar leg opens
+     *  {@code /bz <name>}, an auction-house leg opens {@code /ahs <name>}.
+     *  Sending the wrong one would open an empty search and read as the mod
+     *  being broken. {@code via} comes from the same server field that drew
+     *  the row, so the hint and the command can never disagree.
+     *
+     *  <p>ASSISTED sends and puts the QUANTITY on the clipboard, because the
+     *  amount still has to be typed into Hypixel's order sign and the mod
+     *  must never type it. STRICT sends nothing and puts the COMMAND on the
+     *  clipboard, which is what STRICT means.
      *
      *  <p>Returns true when something happened (send or copy).
      */
-    public boolean onBazaarLegClicked(Minecraft mc, String itemName, long qty) {
+    public boolean onCraftLegClicked(Minecraft mc, String itemName, long qty, String via) {
         if (mc == null || mc.player == null) {
             return false;
+        }
+        String verb = commandFor(via);
+        if (verb == null) {
+            return false; // unknown source: no command exists, caller copies
         }
         String safe = sanitizeQuery(itemName);
         if (safe.isEmpty()) {
             // A name we cannot vouch for is never interpolated into a command.
-            AuditLog.record("rejected_bad_bz_name", "craft_click", String.valueOf(itemName));
-            Chat.local(mc, "§e[MidasFlip]§r couldn't build a safe bazaar search for that item.");
+            AuditLog.record("rejected_bad_leg_name", "craft_click", String.valueOf(itemName));
+            Chat.local(mc, "§e[MidasFlip]§r couldn't build a valid search for that item.");
             return false;
         }
-        String command = "bz " + safe;
+        String command = verb + " " + safe;
         String qtyText = qty > 0 ? String.valueOf(qty) : "";
 
         // DOUBLE GATE, following the purchase overlay's precedent: ASSISTED
-        // alone is not consent for this command. Someone who enabled ASSISTED
-        // agreed to /viewauction; bazaarLegSend is off by default so an
-        // existing user cannot be upgraded into sending something new.
+        // alone is not consent for these commands. Someone who enabled
+        // ASSISTED agreed to /viewauction; craftLegSend is off by default so
+        // an existing user cannot be upgraded into sending something new.
         //
         // FAIL SAFE: send ONLY when both hold. STRICT, null, anything
         // unrecognized, or the toggle off, all copy instead.
         boolean strict = config.safetyMode != MidasflipConfig.SafetyMode.ASSISTED;
-        if (!config.bazaarLegSend || strict) {
+        if (!config.craftLegSend || strict) {
             mc.keyboardHandler.setClipboard("/" + command);
             // Say WHICH gate stopped it. One string for both reasons told an
             // ASSISTED user "the mod never sends commands in this mode",
@@ -181,7 +192,7 @@ public final class ActionController {
                         + (qtyText.isEmpty() ? "" : " §7· you need §f" + qtyText + "§r")
                         + (strict
                            ? " §8(STRICT never sends; paste it in chat)§r"
-                           : " §8(bazaar sends are off · Safety → bazaar leg sends)§r"));
+                           : " §8(recipe sends are off · Safety → recipe leg sends)§r"));
             }
             AuditLog.record("clipboard", "craft_click", command + " qty=" + qtyText
                     + (strict ? " reason=strict" : " reason=toggle_off"));
@@ -199,19 +210,41 @@ public final class ActionController {
 
         // Audit BEFORE the send, same as the open path: a crash mid-send must
         // never leave a sent command with no trail.
-        AuditLog.record("bz_sending", "craft_click", command + " qty=" + qtyText + " elapsed=" + elapsed);
+        AuditLog.record(verb + "_sending", "craft_click", command + " qty=" + qtyText + " elapsed=" + elapsed);
         lastSendMs = now;
+        // Kill any live purchase-overlay token. This path never SETS one, but
+        // an unconsumed /viewauction token (the auction expired, no GUI
+        // opened) stays valid for ATTACH_WINDOW_MS — and an Auction View
+        // reached from this /ahs search would then consume it. Identity fails
+        // closed for a different item, but same-id-same-count would attach the
+        // buy zone to a GUI the mod did not open, which is outside the
+        // 2026-07-05 carve-out's wording (review 2026-08-05).
+        lastSentFlip = null;
         mc.player.connection.sendCommand(command); // the one game input, on this physical click
-        AuditLog.record("bz_sent", "craft_click", command);
+        AuditLog.record(verb + "_sent", "craft_click", command);
         if (!qtyText.isEmpty()) {
             mc.keyboardHandler.setClipboard(qtyText);
         }
         if (config.chatConfirmations) {
-            Chat.local(mc, "§e[MidasFlip]§r opened bazaar for §b" + safe + "§r"
+            Chat.local(mc, "§e[MidasFlip]§r opened §b" + safe + "§r"
                     + (qtyText.isEmpty() ? "" : " §7· copied §f" + qtyText + "§r for the amount sign")
                     + " · the order stays your click.");
         }
         return true;
+    }
+
+    /** The search command for a leg's market, or null when there is none.
+     *  craft.py prices every input as either "bazaar" or "ah:&lt;comp_key&gt;", so
+     *  those two are the whole domain; anything else is a shape we do not
+     *  recognise and must not guess a command for. */
+    static String commandFor(String via) {
+        if (via == null) {
+            return null;
+        }
+        if (via.equals("bazaar")) {
+            return "bz";
+        }
+        return via.startsWith("ah:") ? "ahs" : null;
     }
 
     private long lastCopyChatMs;

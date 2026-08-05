@@ -59,7 +59,7 @@ public final class TourScreen extends PhosScreen {
                                 "It finds flips. You click. The mod never plays for you.",
                                 "[J] opens this menu. [K] toggles the on-screen board.",
                                 "[O] opens the best flip. STRICT copies the command,",
-                                "ASSISTED sends /viewauction, or /bz from a recipe leg."),
+                                "ASSISTED sends /viewauction. Recipe legs are separate."),
                         "This is lower-risk by architecture, not a promise."),
 
                 new Card("The board",

@@ -193,7 +193,7 @@ public final class MidasflipConfig {
      *  updates the mod and their client sends something they never agreed to
      *  — which is exactly the "the mod acted for me" claim the audit log
      *  exists to refute. Off by default means the claim never arises. */
-    public boolean bazaarLegSend = false;
+    public boolean craftLegSend = false;
 
     // ---- Auctions tab (bid-flip candidates from /auctions/bids). OFF by
     // default (owner: "should also be toggleable" — when off the sidebar

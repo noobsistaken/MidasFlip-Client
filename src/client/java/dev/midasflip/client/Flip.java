@@ -91,4 +91,32 @@ public final class Flip {
     public long ageSeconds() {
         return Math.max(0, (System.currentTimeMillis() - receivedAtMs) / 1000);
     }
+
+    /** How fast this bucket actually turns over, for the board's velocity
+     *  column (owner 2026-08-01). The unit follows the volume: an item that
+     *  sells 300 times a day reads better as "12/h" than "300/d", and an
+     *  item that sells twice a day would read as "0/h" if forced into hours.
+     *
+     *  <p>Switches at 24/day, the point where the hourly figure first
+     *  reaches 1 and stops rounding to nothing. Below 10/day it keeps one
+     *  decimal, because the difference between 2.4/d and 9/d is the
+     *  difference between a slow flip and a fast one and both would
+     *  otherwise round to the same-looking integer.
+     *
+     *  <p>Empty string when the server sent nothing usable: an unknown
+     *  velocity must read as absent, never as zero, because "0/d" claims
+     *  the item does not sell. */
+    public String velocityLabel() {
+        double spd = salesPerDay;
+        if (!(spd > 0) || Double.isNaN(spd) || Double.isInfinite(spd)) {
+            return "";
+        }
+        if (spd >= 24.0) {
+            return Math.round(spd / 24.0) + "/h";
+        }
+        if (spd >= 10.0) {
+            return Math.round(spd) + "/d";
+        }
+        return String.format(java.util.Locale.ROOT, "%.1f/d", spd);
+    }
 }

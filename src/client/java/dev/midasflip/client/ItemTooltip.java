@@ -143,8 +143,16 @@ public final class ItemTooltip {
         String ledgerKey = pet == null && skyblockId == null
                 ? ledgerKeyFor(stack) : null;
         if (ledgerKey != null) {
+            // Carry the lore-recovered modifiers too. Without them this path
+            // returns a bucket price with no mod_contributions, so the
+            // breakdown vanished on exactly the NBT-stripped menus this
+            // branch exists to serve (owner 2026-08-03). LoreMods recovers
+            // enchants only — gems and HPB are not in the lore — so the
+            // partial-atoms warning below still applies.
+            lorePath = true;
             path = "/value/" + java.net.URLEncoder.encode(
-                    ledgerKey, java.nio.charset.StandardCharsets.UTF_8);
+                    ledgerKey, java.nio.charset.StandardCharsets.UTF_8)
+                    + modsParam(LoreMods.atomsFromLore(stack)).replaceFirst("^&", "?");
         } else if (pet != null) {
             String mods = ItemId.modAtoms(stack); // pet held item, if any
             path = (petType != null ? "/price/by-id/" : "/price/by-name/")
@@ -259,6 +267,14 @@ public final class ItemTooltip {
                         ? GoldFields.locked("incl. modifiers")
                         : "§7incl. modifiers §f+" + coins(contributions * units)
                         + "§8 · amber conf§r"));
+                // Itemized: a total tells you the modifiers are worth
+                // something, the breakdown tells you WHICH one carries the
+                // item — which is the difference between a number and an
+                // argument. The server already returns this map; the client
+                // used to sum it and throw the parts away (owner 2026-08-01).
+                for (String line : modContribLines(resp, units)) {
+                    lines.add(Component.literal(line));
+                }
                 if (lorePath) {
                     lines.add(Component.literal(
                             "§8menu view · enchants counted, gems/HPB not visible§r"));
@@ -309,20 +325,47 @@ public final class ItemTooltip {
         if (ledger == null) {
             return null;
         }
-        String want = norm(SellOverlay.stripReforge(
-                SellOverlay.cleanName(stack.getHoverName().getString().replaceAll("§.", ""))));
+        String raw = stack.getHoverName().getString().replaceAll("§.", "");
+        String want = norm(SellOverlay.stripReforge(SellOverlay.cleanName(raw)));
         if (want.isEmpty()) {
             return null;
         }
+        // Stars ARE visible in the name even when NBT is stripped, so a
+        // name-only match was far too weak: norm() flattens "Necron's
+        // Chestplate ✪✪✪✪✪" and "Necron's Chestplate" to the same string, and
+        // ledger.recent() returns oldest-first, so holding one 5-star and
+        // hovering a clean one priced the clean item from the 5-star bucket
+        // (review 2026-08-05, caught pre-release). Same guard the sell
+        // overlay has used since 2026-07-13.
+        int visibleStars = SellOverlay.loreStars(raw);
+        String found = null;
         for (PositionLedger.Position p : ledger.recent(200)) {
             if ("sold".equals(p.state) || p.compKey == null || p.compKey.isEmpty()) {
                 continue;
             }
-            if (want.equals(norm(NameMap.pretty(p.itemId, p.compKey)))) {
-                return p.compKey;
+            if (!want.equals(norm(NameMap.pretty(p.itemId, p.compKey)))
+                    || !starsMatch(p.compKey, visibleStars)) {
+                continue;
             }
+            if (found != null && !found.equals(p.compKey)) {
+                // Two open positions, same name, same visible stars, DIFFERENT
+                // buckets. Nothing on screen distinguishes them, so picking
+                // one would be a coin flip on a buy-decision surface. Fall
+                // through to the lore path, which at least derives from the
+                // item in hand.
+                return null;
+            }
+            found = p.compKey;
         }
-        return null;
+        return found;
+    }
+
+    /** Star segment of a comp key against the stars visible in the name.
+     *  A key with no star segment is compatible with anything — absence is
+     *  not a claim of zero. */
+    private static boolean starsMatch(String compKey, int visibleStars) {
+        var m = java.util.regex.Pattern.compile("\\|s(\\d+)(?:\\||$)").matcher(compKey);
+        return !m.find() || Integer.parseInt(m.group(1)) == visibleStars;
     }
 
     /** "estimated craft price" — what one unit costs to make, from
@@ -434,6 +477,87 @@ public final class ItemTooltip {
             return "";
         }
         return "&mods=" + java.net.URLEncoder.encode(atoms, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /** Biggest contributors first, as display lines. Capped so a heavily
+     *  modified item cannot push a tooltip off the screen; the remainder is
+     *  counted rather than silently dropped, because a hidden line is worse
+     *  than a shorter one. Empty when the server sent nothing usable. */
+    static java.util.List<String> modContribLines(JsonObject resp, int units) {
+        JsonObject contributions = GoldFields.optObj(resp, "mod_contributions");
+        if (contributions == null || contributions.size() == 0) {
+            return java.util.List.of();
+        }
+        record Row(String label, double coins) { }
+        java.util.List<Row> rows = new java.util.ArrayList<>();
+        for (var e : contributions.entrySet()) {
+            Double v = GoldFields.optNum(contributions, e.getKey());
+            if (v == null || v == 0) {
+                continue; // a zero contribution is noise, not information
+            }
+            rows.add(new Row(prettyAtom(e.getKey()), v * units));
+        }
+        rows.sort((a, b) -> Double.compare(Math.abs(b.coins()), Math.abs(a.coins())));
+        java.util.List<String> out = new java.util.ArrayList<>();
+        int shown = Math.min(rows.size(), MAX_CONTRIB_LINES);
+        for (int i = 0; i < shown; i++) {
+            Row r = rows.get(i);
+            // Sign is explicit: a modifier can subtract (candied pets do).
+            String sign = r.coins() >= 0 ? "+" : "-";
+            out.add("§8  " + r.label() + " §7" + sign + coins(Math.abs(r.coins())) + "§r");
+        }
+        if (rows.size() > shown) {
+            out.add("§8  +" + (rows.size() - shown) + " more§r");
+        }
+        return out;
+    }
+
+    private static final int MAX_CONTRIB_LINES = 4;
+
+    /** Atom -> something a player reads. The grammar is ItemId.modAtoms':
+     *  ult:&lt;name&gt;_&lt;lvl&gt;, ench6:&lt;bucket&gt;, gem:&lt;TYPE&gt;x&lt;n&gt;, hpb:&lt;n&gt;,
+     *  drill_parts, held:&lt;item&gt;. Unknown shapes are surfaced RAW rather than
+     *  guessed at, so a new atom shows up as itself instead of silently
+     *  rendering as something it is not. */
+    static String prettyAtom(String atom) {
+        if (atom == null || atom.isBlank()) {
+            return "?";
+        }
+        if (atom.startsWith("ult:")) {
+            String t = atom.substring(4);
+            int u = t.lastIndexOf('_');
+            String name = u > 0 ? t.substring(0, u) : t;
+            String lvl = u > 0 ? t.substring(u + 1) : "";
+            return "Ult. " + title(name) + (lvl.isEmpty() ? "" : " " + lvl);
+        }
+        if (atom.startsWith("ench6:")) {
+            return atom.substring(6) + " high enchants";
+        }
+        if (atom.startsWith("gem:")) {
+            String t = atom.substring(4);
+            int x = t.lastIndexOf('x');
+            return x > 0 ? title(t.substring(0, x)) + " x" + t.substring(x + 1) : title(t);
+        }
+        if (atom.startsWith("hpb:")) {
+            return atom.substring(4) + " hot potato";
+        }
+        if (atom.equals("drill_parts")) {
+            return "drill parts";
+        }
+        if (atom.startsWith("held:")) {
+            return "held " + title(atom.substring(5));
+        }
+        return atom;
+    }
+
+    private static String title(String s) {
+        // Lowercase first: gem atoms arrive SHOUTING ("JASPER") and a
+        // tooltip full of capitals reads as an error message.
+        String t = s.replace('_', ' ').strip().toLowerCase(Locale.ROOT);
+        if (t.isEmpty()) {
+            return s;
+        }
+        return Character.toUpperCase(t.charAt(0)) + t.substring(1);
     }
 
     /** Sum of the server's itemized per-modifier deltas (mod_contributions

@@ -92,7 +92,12 @@ public final class FlipHud {
             String candy = f.petCandy > 0 ? " §d" + f.petCandy + "/10 candies§r" : "";
             String status = f.gone ? "§c✗ taken" : fresh ? "new" : f.ageSeconds() + "s";
             String profitCol = f.gone ? "§8" : "§a+";
-            String row = String.format("%s%s%s%s%s%s%s§r %s → %s%s§r (%.0f%%) §7c%.2f · %s§r",
+            // Velocity sits right after confidence: how sure we are, then how
+            // fast it moves. Empty when unknown, and the separator goes with
+            // it so an absent figure leaves no orphan dot.
+            String vel = f.velocityLabel();
+            String velPart = vel.isEmpty() ? "" : " · " + vel;
+            String row = String.format("%s%s%s%s%s%s%s§r %s → %s%s§r (%.0f%%) §7c%.2f%s · %s§r",
                     Rule.starred(config.rules, f) ? "§e★§r " : "",
                     Boolean.TRUE.equals(f.fallingKnife) && !f.gone ? "§c⚠§r " : "",
                     !f.gone && "high".equals(f.manip) ? "§c⚑§r " : !f.gone && "med".equals(f.manip) ? "§6⚐§r " : "",
@@ -105,6 +110,7 @@ public final class FlipHud {
                     coins((long) f.netProfit),
                     f.netMarginPct * 100,
                     f.confidence,
+                    velPart,
                     status);
             Phos.textShadow(gfx, mc.font, row, x, y, 0xFFFFFFFF);
             y += line;

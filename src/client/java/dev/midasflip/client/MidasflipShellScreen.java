@@ -516,12 +516,7 @@ public final class MidasflipShellScreen extends PhosScreen {
         JsonElement el = api.get("/auctions/bids", 60_000);
         // Pro-gated server-side: on a definitive 402 show the honest hint;
         // no client entitlement logic (the mod only reflects the status).
-        if (el != null && el.isJsonNull() && api.lastStatus("/auctions/bids") == 402) {
-            Phos.text(g, font, "§8pro feature · " + MidasflipConfig.SITE_HOST + "§r", x, y + 4, Phos.FAINT);
-            return;
-        }
-        if (el == null || !el.isJsonArray()) {
-            loadingOrDown(g, x, y + 4, "auctions");
+        if (proGateOrLoading(g, x, y + 4, el, "/auctions/bids", "auctions")) {
             return;
         }
 
@@ -758,8 +753,10 @@ public final class MidasflipShellScreen extends PhosScreen {
 
         JsonElement el = api.get("/craft/evs", 5 * 60_000);
         valueRows.clear();
-        if (el == null || !el.isJsonArray()) {
-            loadingOrDown(g, x, y, "value board");
+        // Was loadingOrDown: a free user's 402 rendered as "value board down",
+        // i.e. the product looked broken instead of locked. This is the
+        // largest Gold surface in the mod (review note 2026-07-30).
+        if (proGateOrLoading(g, x, y, el, "/craft/evs", "value board")) {
             return;
         }
         int[] cols = {0, 175, 225, 330, 385, 425};
@@ -813,18 +810,21 @@ public final class MidasflipShellScreen extends PhosScreen {
                     // arrives this is the single place that multiplies.
                     long qty = (long) Math.ceil(need);
                     String via = in.get("via").getAsString();
-                    boolean bazaar = "bazaar".equals(via);
-                    // A bazaar leg can be opened; an AH or forge leg cannot,
-                    // because there is no command that searches the auction
-                    // house by name. Those copy instead of sending — the row
-                    // says which, so a click is never a surprise.
+                    // Every priced leg has a market and therefore a search
+                    // command: craft.py returns "bazaar" or "ah:<key>" and
+                    // nothing else. A leg we cannot classify sends nothing.
+                    String verb = ActionController.commandFor(via);
+                    // Both markets have a search command, so both can open:
+                    // /bz for a bazaar leg, /ahs for an auction-house one. A
+                    // leg we cannot classify has no command and only copies.
+                    // The row says which, so a click is never a surprise.
                     // The hint must match what the click will ACTUALLY do,
                     // including in STRICT and with the send toggle off, or the
                     // row promises an open and delivers a copy.
-                    boolean willSend = bazaar && config.bazaarLegSend
+                    boolean willSend = verb != null && config.craftLegSend
                             && config.safetyMode == MidasflipConfig.SafetyMode.ASSISTED;
                     String hint = willSend ? " §8· open ⏎§r"
-                            : bazaar ? " §8· copy /bz ⧉§r" : " §8· copy ⧉§r";
+                            : verb != null ? " §8· copy /" + verb + " ⧉§r" : " §8· copy ⧉§r";
                     boolean legHov = hovered(x, y - 1, w, 11, mx, my);
                     if (legHov) {
                         g.fill(x, y - 1, x + w, y + 10, Phos.PANEL_HI);
@@ -835,8 +835,8 @@ public final class MidasflipShellScreen extends PhosScreen {
                             + " · " + via + hint + "§r", x, y, Phos.FAINT);
                     zone(x, y - 1, w, 11, () -> {
                         Minecraft mc = Minecraft.getInstance();
-                        if (bazaar) {
-                            actions.onBazaarLegClicked(mc, legName, qty);
+                        if (verb != null) {
+                            actions.onCraftLegClicked(mc, legName, qty, via);
                         } else {
                             // Display-only path: no command is ever built for
                             // an AH or forge leg, so there is nothing here for
@@ -896,7 +896,13 @@ public final class MidasflipShellScreen extends PhosScreen {
                 || (el == null && !api.likelyDown()
                     && System.currentTimeMillis() - kindSince > 3_000);
         if (pro) {
-            Phos.text(g, font, "§8pro feature · " + MidasflipConfig.SITE_HOST + "§r", x, y, Phos.FAINT);
+            // Launch copy (owner 2026-08-05): Aug 11 is FREE and checkout does
+            // not open until September, so a gated pane says WHEN it opens,
+            // never what it costs. Same wording as GoldFields.locked so a
+            // whole-pane gate and an inline field marker agree.
+            Phos.text(g, font, "§6Gold · opens September§r", x, y, Phos.ACCENT);
+            Phos.text(g, font, "§8this board is part of Gold · "
+                    + MidasflipConfig.SITE_HOST + "§r", x, y + 11, Phos.FAINT);
         } else if (el != null && el.isJsonNull()) {
             // Definitive non-402 "no data" (e.g. 404 from an older server)
             // — never a forever-"loading…".
@@ -1379,9 +1385,9 @@ public final class MidasflipShellScreen extends PhosScreen {
     private void safety(GuiGraphicsExtractor g, int x, int w, int mx, int my) {
         int y = 38;
         boolean assisted = config.safetyMode == MidasflipConfig.SafetyMode.ASSISTED;
-        Phos.panel(g, x, y, w, 56);
+        Phos.panel(g, x, y, w, 82);
         Phos.label(g, font, "mode", x + 8, y + 6);
-        Phos.text(g, font, assisted ? "§6ASSISTED§r · one input sends /viewauction, or /bz from a recipe leg"
+        Phos.text(g, font, assisted ? "§6ASSISTED§r · one input sends /viewauction"
                 : "§aSTRICT§r · one press copies, you paste", x + 8, y + 18, Phos.CREAM);
         Phos.text(g, font, "§8either way: one physical input = at most one action, never automated§r",
                 x + 8, y + 31, Phos.FAINT);
@@ -1390,7 +1396,23 @@ public final class MidasflipShellScreen extends PhosScreen {
             config.save();
             refresh();
         });
-        y += 64;
+        // The SECOND gate on recipe-leg sends, with its own row because it is
+        // its own consent (spec §13/§14 amendment 2026-07-30). It shipped as a
+        // config field with no control at all, while the blocked-send chat line
+        // told people to come here and find it — so the only way to turn it on
+        // was hand-editing midasflip.json, which is exactly the vector
+        // normalize() treats as hostile (review 2026-08-03).
+        Phos.text(g, font, config.craftLegSend
+                        ? "§6recipe legs§r · a click sends /bz or /ahs for that ingredient"
+                        : "§8recipe legs · off · a click copies the command instead§r",
+                x + 8, y + 58, config.craftLegSend ? Phos.CREAM : Phos.FAINT);
+        textButton(g, x + 8, y + 70,
+                config.craftLegSend ? "turn recipe leg sends off" : "turn recipe leg sends on", () -> {
+            config.craftLegSend = !config.craftLegSend;
+            config.save();
+            refresh();
+        });
+        y += 90;
 
         // Website account pairing is always recoverable from settings. Never
         // render the saved credential; this surface exposes only its presence

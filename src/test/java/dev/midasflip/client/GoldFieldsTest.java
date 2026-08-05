@@ -7,7 +7,9 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GoldFieldsTest {
 
@@ -57,9 +59,25 @@ class GoldFieldsTest {
         assertEquals("high", GoldFields.optStr(o, "string"));
         assertSame(array, GoldFields.optArr(o, "array"));
         assertSame(object, GoldFields.optObj(o, "object"));
-        assertEquals("§8bands · Gold", GoldFields.locked("bands"));
-        assertEquals("§8exits · Gold", GoldFields.locked("exits"));
-        assertEquals("§8comps · Gold", GoldFields.locked("comps"));
-        assertEquals("§8hold · Gold", GoldFields.locked("hold"));
+        // Launch posture (owner 2026-08-05): Aug 11 ships FREE and checkout
+        // does not open until September, so a locked surface says WHEN it
+        // opens, never what it costs.
+        assertEquals("§8bands · Gold · opens September", GoldFields.locked("bands"));
+        assertEquals("§8exits · Gold · opens September", GoldFields.locked("exits"));
+        assertEquals("§8comps · Gold · opens September", GoldFields.locked("comps"));
+        assertEquals("§8hold · Gold · opens September", GoldFields.locked("hold"));
+
+        // The invariant behind the wording, not just the wording: a locked
+        // label must name a DATE and never a price. A store page and a mod
+        // that quote a price for something nobody can buy yet are the same
+        // defect, and this is the single function all 27 call sites use.
+        for (String label : new String[]{"bands", "exits", "comps", "hold"}) {
+            String out = GoldFields.locked(label);
+            assertTrue(out.contains("September"), out);
+            assertFalse(out.contains("€"), out);
+            assertFalse(out.contains("7.99"), out);
+            assertFalse(out.toLowerCase(java.util.Locale.ROOT).contains("upgrade"), out);
+            assertFalse(out.toLowerCase(java.util.Locale.ROOT).contains("buy"), out);
+        }
     }
 }

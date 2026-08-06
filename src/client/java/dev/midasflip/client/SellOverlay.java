@@ -290,7 +290,9 @@ public final class SellOverlay {
         // Dock as a side tab on the GUI's right edge; corner fallback when
         // the window is too narrow for the panel to fit beside it.
         int w = 158;
-        int h = 96 + (pos != null ? 13 : 0) + (underwater ? 22 : 0);
+        // 11px of that is the early-access badge drawn below the valuation
+        // header; without it the bucket/comps note crossed the bottom border.
+        int h = 107 + (pos != null ? 13 : 0) + (underwater ? 22 : 0);
         if (maybeDecomposed) {
             h += 11;                       // "incl. modifiers +X · amber" line
         }
@@ -468,6 +470,12 @@ public final class SellOverlay {
         }
         Phos.text(g, font, "§7finder valuation" + (units > 1 ? " §f×" + units : "")
                 + (stale ? " §c· stale§r" : "") + " §8(current)§r", cx, cy, Phos.DIM);
+        cy += 11;
+        // The whole sell-side block below — bands, the modifier breakdown,
+        // lbin depth, the reprice suggestion — is Gold, and it all RENDERS
+        // during early access. The badge is what stops that being a surprise
+        // in September (owner 2026-08-06).
+        Phos.text(g, font, GoldFields.badge(), cx, cy, Phos.ACCENT);
         cy += 13;
         if (bandsMissing) {
             Phos.text(g, font, GoldFields.locked("bands"), cx, cy, Phos.FAINT);
@@ -494,9 +502,9 @@ public final class SellOverlay {
             // nothing learned reads "not available", never "Gold".
             Phos.text(g, font, contributions != null
                     ? "§7incl. modifiers §f+" + Phos.coins(contributions * units) + "§8 · amber§r"
-                    : ItemTooltip.hasModContribs(resp)
-                    ? GoldFields.unknown("incl. modifiers")
-                    : GoldFields.locked("incl. modifiers"), cx, cy, Phos.DIM);
+                    : GoldFields.isLocked(resp, "mod_contributions")
+                    ? GoldFields.locked("incl. modifiers")
+                    : GoldFields.unknown("incl. modifiers"), cx, cy, Phos.DIM);
             cy += 11;
             if (lorePath) {
                 // Lore path saw enchants only (LoreMods scope) — say so, so

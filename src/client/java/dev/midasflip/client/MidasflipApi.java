@@ -130,6 +130,10 @@ public final class MidasflipApi {
                         long doneAt = System.currentTimeMillis();
                         lastLatencyMs = doneAt - t0;
                         consecutiveFails.set(0);
+                        // One place to notice the server has started shaping
+                        // payloads by tier, so the early-access copy retires
+                        // itself in September without a client release.
+                        GoldFields.observeAny(GSON.fromJson(resp.body(), JsonElement.class));
                         cache.put(path, new Entry(GSON.fromJson(resp.body(), JsonElement.class),
                                 doneAt, doneAt + ttlMs));
                     } else if (resp.statusCode() == 404) {
@@ -210,6 +214,7 @@ public final class MidasflipApi {
                 HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
                 if (resp.statusCode() == 200) {
                     out = GSON.fromJson(resp.body(), JsonElement.class);
+                    GoldFields.observeAny(out);
                 } else {
                     Midasflip.LOG.warn("api {} {} -> HTTP {}", method, logPath(path), resp.statusCode());
                 }

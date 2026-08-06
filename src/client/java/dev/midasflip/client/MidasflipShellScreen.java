@@ -254,11 +254,16 @@ public final class MidasflipShellScreen extends PhosScreen {
         }
         y += 18;
 
-        // Your open auctions, live vs the market (server-judged). Same
-        // data the Trades pane shows; here it is the at-a-glance summary.
+        // Your open auctions, live vs the market (server-judged). Same data
+        // the Trades pane shows, so it carries the same label: the Dashboard
+        // is free for the overall P&L (owner 2026-08-06), NOT for the
+        // sell-side block underneath it. Without this a user reads the whole
+        // pane as free and loses this half in September.
         ListingsWatch.tick(Minecraft.getInstance());
         List<ListingsWatch.Mine> mine = ListingsWatch.mine();
         int underc = ListingsWatch.undercuts().size();
+        Phos.text(g, font, GoldFields.badge(), x, y - 1, Phos.ACCENT);
+        y += 12;
         Phos.label(g, font, "your open auctions" + (mine.isEmpty() ? "" : " · " + mine.size()
                 + (underc > 0 ? " · §6" + underc + " undercut§8" : "")), x, y);
         y += 12;
@@ -401,6 +406,12 @@ public final class MidasflipShellScreen extends PhosScreen {
     }
 
     private void compsPeek(GuiGraphicsExtractor g, Flip f, int x, int y, int w) {
+        // Gold surface that RENDERS during early access, so the badge is the
+        // only thing telling the user it is Gold at all — without it they
+        // learn that in September, which is the takeaway the badge exists to
+        // prevent.
+        Phos.text(g, font, GoldFields.badge(), x, y, Phos.ACCENT);
+        y += 12;
         Phos.panel(g, x, y - 4, Math.min(w, 320), 96);
         x += 8;
         // Comp keys contain '|' — illegal in a URI; unencoded it throws in
@@ -517,7 +528,7 @@ public final class MidasflipShellScreen extends PhosScreen {
      *  Flips board uses — no new send mechanism. */
     private void auctions(GuiGraphicsExtractor g, int x, int w, int mx, int my) {
         int y = 36;
-        Phos.text(g, font, GoldFields.tempFree(), x, y, Phos.ACCENT);
+        Phos.text(g, font, GoldFields.badge(), x, y, Phos.ACCENT);
         y += 13;
         String chips = String.format(Locale.ROOT, "margin ≥ %d%% · ending ≤ %dm · top %d by net",
                 config.auctionMinMarginPct, config.auctionMaxEndMin, config.auctionMaxRows);
@@ -672,7 +683,12 @@ public final class MidasflipShellScreen extends PhosScreen {
     }
 
     private void trades(GuiGraphicsExtractor g, int x, int w) {
-        int y = 38;
+        int y = 32;
+        // Per-trade history and the sell-side suite are Gold; the Dashboard's
+        // overall P&L is free (owner 2026-08-06), which is why the badge sits
+        // here and not there.
+        Phos.text(g, font, GoldFields.badge(), x, y, Phos.ACCENT);
+        y += 13;
 
         // My live listings vs the market (the undercut watch): server-
         // judged status per listing — lowest / undercut / stale — with the
@@ -746,7 +762,7 @@ public final class MidasflipShellScreen extends PhosScreen {
 
     private void value(GuiGraphicsExtractor g, int x, int w, int mx, int my) {
         int y = 36;
-        Phos.text(g, font, GoldFields.tempFree(), x, y, Phos.ACCENT);
+        Phos.text(g, font, GoldFields.badge(), x, y, Phos.ACCENT);
         y += 13;
         int bx = x;
         for (String k : new String[]{"all", "craft", "forge", "kat", "bz craft", "bz", "npc"}) {
@@ -922,20 +938,26 @@ public final class MidasflipShellScreen extends PhosScreen {
         // A 402 is the server SAYING so. The second clause is an inference
         // from silence, and inference must be slow: at 3s one timed-out
         // request told a free-launch user that a free board was paid, on the
-        // same pane that now says "temporary free Gold" right above it
+        // same pane that now carries the early-access badge right above it
         // (review 2026-08-06). Widening the window only ever shows LESS
         // restriction than the server did, so it cannot become a bypass.
         boolean pro = (el != null && el.isJsonNull() && api.lastStatus(path) == 402)
                 || (el == null && !api.likelyDown()
                     && System.currentTimeMillis() - kindSince > 12_000);
+        boolean said402 = el != null && el.isJsonNull() && api.lastStatus(path) == 402;
         if (pro) {
-            // Launch copy (owner 2026-08-05): Aug 11 is FREE and checkout does
-            // not open until September, so a gated pane says WHEN it opens,
-            // never what it costs. Same wording as GoldFields.locked so a
-            // whole-pane gate and an inline field marker agree.
-            Phos.text(g, font, "§6Gold · opens September§r", x, y, Phos.ACCENT);
-            Phos.text(g, font, "§8this board is part of Gold · "
-                    + MidasflipConfig.SITE_HOST + "§r", x, y + 11, Phos.FAINT);
+            // ONLY a real 402 may render tier copy. The other branch is an
+            // INFERENCE from a request that never came back, and answering a
+            // timeout with "€40 Founder" puts a price tag on data we do not
+            // have — the exact failure the three-state rule exists to stop
+            // (review 2026-08-06). A silent request gets an honest "did not
+            // load", not an upsell.
+            if (said402) {
+                Phos.text(g, font, GoldFields.badge(), x, y, Phos.ACCENT);
+                Phos.text(g, font, "§8this board is part of Gold§r", x, y + 11, Phos.FAINT);
+            } else {
+                Phos.text(g, font, "§8this board did not load · retrying§r", x, y, Phos.FAINT);
+            }
         } else if (el != null && el.isJsonNull()) {
             // Definitive non-402 "no data" (e.g. 404 from an older server)
             // — never a forever-"loading…".
@@ -1219,15 +1241,22 @@ public final class MidasflipShellScreen extends PhosScreen {
     }
 
     private void alerts(GuiGraphicsExtractor g, int x, int w) {
-        int y = 38;
+        int y = 32;
+        Phos.text(g, font, GoldFields.badge(), x, y, Phos.ACCENT);
+        y += 13;
         Phos.panel(g, x, y, w, 40);
         Phos.label(g, font, "discord alerts", x + 8, y + 6);
         Phos.text(g, font, "§7server-side: flips ≥ 1M est net post to your webhook§r", x + 8, y + 17, Phos.DIM);
         Phos.text(g, font, "§8tune via MIDASFLIP_ALERT_MIN_PROFIT on the server§r", x + 8, y + 28, Phos.FAINT);
         y += 48;
+        // NOT under the badge: quick-open has not shipped, and the frozen-pool
+        // rule in GoldFields says a post-launch feature never joins the
+        // early-access set. Badging an unbuilt feature as free-right-now would
+        // have broken that rule on the same day it was written.
         Phos.panel(g, x, y, w, 28);
         Phos.label(g, font, "quick-open", x + 8, y + 6);
-        Phos.text(g, font, "§8arrives next update · mouse-bindable one-press open§r", x + 8, y + 17, Phos.FAINT);
+        Phos.text(g, font, "§8" + GoldFields.locked("arrives next update")
+                + " §8· mouse-bindable one-press open§r", x + 8, y + 17, Phos.FAINT);
     }
 
     /** "What's shown": client display filters over every field the server

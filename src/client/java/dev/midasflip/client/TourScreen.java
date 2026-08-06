@@ -79,7 +79,7 @@ public final class TourScreen extends PhosScreen {
                                 "The lowest-BIN line shows the floor and the next one up.",
                                 "It also says how many sellers are sitting at that floor.",
                                 "Inventory, chests, the auction house: the same tooltip."),
-                        "Tooltips are free, with no daily cap."),
+                        "The estimate is free. Bands and sell side are Gold."),
 
                 new Card("Filters are yours",
                         "Filters has two pages. They do different jobs.",

@@ -153,7 +153,7 @@ public final class FlipHud {
             }
             if (!"sold".equals(p.state) && !p.unconfirmed(nowMs) && p.underwater()) {
                 Phos.textShadow(gfx, mc.font, String.format(
-                        "§c▼ %s underwater · paid %s · now ~%s§r",
+                        "§c▼ %s underwater · paid %s · now ~%s §8(Gold)§r",
                         shorten(NameMap.pretty(p.itemId), 18),
                         coins(p.buyPrice), coins(Math.round(p.curPessTotal()))),
                         x, y, 0xFFFFFFFF);
@@ -178,7 +178,8 @@ public final class FlipHud {
                         shorten(NameMap.pretty(m.itemId(), m.compKey()), 18),
                         coins(Math.round(m.unitPrice())),
                         coins(Math.round(m.floorUnit() != null ? m.floorUnit() : 0)),
-                        m.suggestUnit() != null ? " · reprice ~" + coins(Math.round(m.suggestUnit())) : "",
+                        m.suggestUnit() != null
+                                ? " · reprice ~" + coins(Math.round(m.suggestUnit())) + " §8(Gold)§6" : "",
                         shift.isEmpty() ? "" : " · " + shift + "§6"),
                         x, y, 0xFFFFFFFF);
                 y += line;

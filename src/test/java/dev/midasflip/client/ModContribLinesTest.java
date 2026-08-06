@@ -214,17 +214,20 @@ class ModContribLinesTest {
 
     @Test
     void nothingLearnedIsNotAPaywall() {
-        // The distinction that matters at a free launch. The field ARRIVING
-        // with nothing learned means we have no measurement; the field being
-        // absent is what the Gold lock reads. Rendering the first as the
-        // second sells the user data we simply do not have.
+        // The distinction that matters at a free launch, now decided by the
+        // server's gold_locked marker instead of by the field being missing.
+        // Absence alone cannot tell "you did not pay for this" from "we have
+        // no measurement", and guessing picks the paywall exactly when the
+        // truth is a data gap.
         JsonObject unlearned = resp("""
                 {"mod_contributions": [
                     {"feature": "shiny", "learned_delta": 0.0, "learned": false}]}""");
         assertNull(ItemTooltip.modContribSum(unlearned));
-        assertTrue(ItemTooltip.hasModContribs(unlearned), "→ unknown(), not locked()");
+        assertFalse(GoldFields.isLocked(unlearned, "mod_contributions"),
+                "no marker → nothing was withheld → unknown(), not locked()");
 
-        assertFalse(ItemTooltip.hasModContribs(resp("{}")), "absent → locked()");
-        assertFalse(ItemTooltip.hasModContribs(resp("{\"mod_contributions\": null}")));
+        JsonObject shaped = resp("{\"gold_locked\": [\"mod_contributions\"]}");
+        assertTrue(GoldFields.isLocked(shaped, "mod_contributions"),
+                "the server said it withheld this → locked()");
     }
 }

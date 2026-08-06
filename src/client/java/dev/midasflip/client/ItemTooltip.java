@@ -91,6 +91,10 @@ public final class ItemTooltip {
                     + (Boolean.TRUE.equals(match.fallingKnife) ? " §c⚠ falling§r"
                     : match.fallingKnife == null ? "" : "")));
             lines.add(Component.literal("§8matched to board auction by item · count · price§r"));
+            // Sell target, the bands and the comp count above are all Gold.
+            // They RENDER during early access, so this line is the only thing
+            // that tells the user so — without it they find out in September.
+            lines.add(Component.literal("§8" + GoldFields.EARLY_ACCESS + "§r"));
         });
     }
 
@@ -121,6 +125,10 @@ public final class ItemTooltip {
     }
 
     private void marketLines(net.minecraft.world.item.ItemStack stack, List<Component> lines) {
+        // Set by each Gold add site below; drives the single early-access
+        // badge at the end of the block. A local rather than a field: this
+        // runs per hover and must not carry state between items.
+        boolean goldShown = false;
         Pets.PetName pet = Pets.parse(stack.getHoverName());
         Double petExp = pet == null ? null : ItemId.petExp(stack);
         String petType = pet == null ? null : ItemId.petType(stack);
@@ -235,6 +243,7 @@ public final class ItemTooltip {
             // whole game down from a tooltip render (crash 2026-08-06).
             // The other two call sites already used backed(); this one
             // checked a different thing and looked correct.
+            goldShown = true;   // bands
             lines.add(Component.literal(!valuation.backed() || opt == null
                     ? GoldFields.locked("bands")
                     : "§7instasell §a" + coins(valuation.target() * units)
@@ -251,6 +260,7 @@ public final class ItemTooltip {
             // BIN is context below, never a replacement sell number.
             FinderValuation.Result valuation = FinderValuation.from(est, resp);
             if (valuation.backed()) {
+                goldShown = true;   // sell target + bands
                 lines.add(Component.literal("§7sell target §a" + coins(valuation.target() * units)
                         + " §8· finder valuation§r"));
                 lines.add(Component.literal(opt == null
@@ -271,6 +281,7 @@ public final class ItemTooltip {
                 // (spec transparency). The +sum is the learned modifier
                 // uplift the server itemized in mod_contributions.
                 Double contributions = modContribSum(resp);
+                goldShown = true;   // the modifier breakdown
                 // Three distinct states, three distinct sentences. The field
                 // missing entirely is the Gold lock. The field ARRIVING with
                 // nothing learned is not a paywall — it is us having no
@@ -279,9 +290,9 @@ public final class ItemTooltip {
                 // to them (review 2026-08-06).
                 lines.add(Component.literal(contributions != null
                         ? "§7incl. modifiers §f+" + coins(contributions * units) + "§8 · amber conf§r"
-                        : hasModContribs(resp)
-                        ? GoldFields.unknown("incl. modifiers")
-                        : GoldFields.locked("incl. modifiers")));
+                        : GoldFields.isLocked(resp, "mod_contributions")
+                        ? GoldFields.locked("incl. modifiers")
+                        : GoldFields.unknown("incl. modifiers")));
                 // Itemized: a total tells you the modifiers are worth
                 // something, the breakdown tells you WHICH one carries the
                 // item — which is the difference between a number and an
@@ -313,7 +324,15 @@ public final class ItemTooltip {
         // you buy the floor). Stack totals, like the finder and estimates.
         String lbin = lbinLine(config, resp, units);
         if (lbin != null) {
+            goldShown = true;   // lbin depth
             lines.add(Component.literal(lbin));
+        }
+        // One badge for the whole valuation block, and only when a Gold line
+        // actually rendered — a tooltip showing nothing but free data (the
+        // estimate, hold, manip risk, falling knife) must not claim to be
+        // showing Gold. goldShown is set at each Gold add site above.
+        if (goldShown) {
+            lines.add(Component.literal("§8" + GoldFields.EARLY_ACCESS + "§r"));
         }
         if (pet != null && !bazaar) {
             String b = resp.has("exp_bucket") ? resp.get("exp_bucket").getAsString()
@@ -638,14 +657,6 @@ public final class ItemTooltip {
 
     static java.util.List<java.util.Map.Entry<String, Double>> modContribs(JsonObject resp) {
         return modContribs(resp, false);
-    }
-
-    /** Did the server send the field at all? Absence is what {@code locked()}
-     *  reads as Gold; a field that arrived but held nothing usable is a
-     *  different statement and gets {@code unknown()} instead. */
-    static boolean hasModContribs(JsonObject resp) {
-        JsonElement raw = resp == null ? null : resp.get("mod_contributions");
-        return raw != null && !raw.isJsonNull();
     }
 
     /** Sum of the itemized deltas, for the "incl. modifiers +X" marker.

@@ -53,6 +53,22 @@ final class GoldFields {
      *  "coming", not as "pay me" — it is never hidden and never accessible,
      *  and the label says when it opens rather than what it costs. All 27
      *  call sites go through here, so the launch wording is one edit. */
+    /** A FREE field that simply has no value right now.
+     *
+     *  <p>Not the same thing as {@link #locked}. `locked` says "this is
+     *  Gold"; this says "there is nothing to show". Using the wrong one at a
+     *  free launch tells a user that data they already have is behind a
+     *  paywall — and for the risk flags it is worse than that, because
+     *  absence there is itself the answer: no manipulation detected, not
+     *  falling. Charging for a clean verdict would be absurd.
+     *
+     *  <p>Free per owner 2026-08-06: manipulation risk, falling knife, the
+     *  hover estimate, hold. Gold keeps the bands, comps, exits, sell-side
+     *  numbers, slow-case tail, sell-through and the modifier breakdown. */
+    static String unknown(String label) {
+        return "§8" + label + " · not available";
+    }
+
     static String locked(String label) {
         return "§8" + label + " · Gold · opens September";
     }

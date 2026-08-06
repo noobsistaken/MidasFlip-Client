@@ -463,7 +463,13 @@ public final class MidasflipShellScreen extends PhosScreen {
                     || (f.exitPatient != null
                     && (f.exitPatientNet == null || f.exitPatientHoldS == null));
             if (missingNumbers) {
-                Phos.text(g, font, GoldFields.locked("exits"), x, yy + 13, Phos.FAINT);
+                // The patient VERDICT is free; only the exit NUMBERS are
+                // Gold. Rendering the lock alone discarded a free field
+                // along with the paid ones, so a patient flip stopped
+                // announcing itself the moment exits went missing
+                // (review 2026-08-05).
+                String freeBadge = "patient".equals(f.verdict) ? "§6◔ patient flip§7 · " : "";
+                Phos.text(g, font, freeBadge + GoldFields.locked("exits"), x, yy + 13, Phos.FAINT);
             } else {
                 String fastNet = (f.exitFastNet >= 0 ? " §a+" : " §c-")
                         + Phos.coins(Math.abs(f.exitFastNet)) + "§7";
@@ -496,7 +502,10 @@ public final class MidasflipShellScreen extends PhosScreen {
             Phos.text(g, font, "§8" + String.join(" · ", f.manipReasons) + "§r",
                     x, yy + 48, Phos.FAINT);
         } else {
-            Phos.text(g, font, GoldFields.locked("manipulation risk"), x, yy + 37, Phos.FAINT);
+            // Absence IS the answer here: manip is "med"|"high"|null and null
+            // means nothing was detected. A clean verdict is free, and
+            // labelling it Gold sells a user something they already have
+            // (owner 2026-08-06). Draw nothing.
         }
     }
 
@@ -669,7 +678,7 @@ public final class MidasflipShellScreen extends PhosScreen {
                             + (m.suggestUnit() != null ? " · reprice ~" + Phos.coins(m.suggestUnit()) : "")
                             + (shift.isEmpty() ? "" : " · profit " + shift + "§8")
                             + (m.holdMedS() != null ? " · or hold ~" + ListingsWatch.compact(m.holdMedS())
-                            : " · " + GoldFields.locked("hold")) + "§r";
+                            : " · " + GoldFields.unknown("hold")) + "§r";
                 } else if (m.stale()) {
                     tag = "§e◆ stale§r §8· est " + (m.suggestUnit() != null ? Phos.coins(m.suggestUnit()) : "?") + "§r";
                 } else {
@@ -1645,7 +1654,10 @@ public final class MidasflipShellScreen extends PhosScreen {
 
     private static String holdStr(Flip f) {
         if (f.holdMedS == null) {
-            return GoldFields.locked("hold");
+            // hold is a FREE board column (owner 2026-08-06) — the tour
+            // teaches it as one. Absent means we could not measure it, not
+            // that it costs money.
+            return GoldFields.unknown("hold");
         }
         // Honest range: fair-cohort median with the p90 slow tail — a
         // point estimate is exceeded half the time by construction.

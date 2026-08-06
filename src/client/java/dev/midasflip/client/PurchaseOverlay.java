@@ -325,7 +325,7 @@ public final class PurchaseOverlay {
         Phos.textShadow(gfx, mc.font, tier + "▎ " + flip.itemId + "§r", cx, y, 0xFFFFFFFF);
         y += 14;
         String estimate = flip.estPess == null
-                ? GoldFields.locked("est")
+                ? GoldFields.unknown("est")
                 : "§7est §f" + coins(Math.round(flip.estPess));
         Phos.textShadow(gfx, mc.font, "§7buy §f" + coins(flip.buyPrice) + "§7 → " + estimate
                 + "§7 · net §a+" + coins((long) flip.netProfit) + "§r", cx, y, 0xFFFFFFFF);
@@ -333,7 +333,7 @@ public final class PurchaseOverlay {
         Phos.textShadow(gfx, mc.font, String.format("§7conf %.2f · %d comps · %.1f/day%s§r",
                 flip.confidence, flip.comps, flip.salesPerDay,
                 Boolean.TRUE.equals(flip.fallingKnife) ? " · §c⚠ falling§r"
-                        : flip.fallingKnife == null ? " · " + GoldFields.locked("falling") : ""),
+                        : flip.fallingKnife == null ? "" : ""),
                 cx, y, 0xFFFFFFFF);
         y += 18;
         Phos.textShadow(gfx, mc.font, "§a▶ click anywhere here to buy§r", cx, y, 0xFFFFFFFF);

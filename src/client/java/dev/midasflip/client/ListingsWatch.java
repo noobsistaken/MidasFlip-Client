@@ -204,7 +204,7 @@ public final class ListingsWatch {
                     ? " or hold (~" + compact(m.holdMedS())
                     + (m.holdP90S() != null ? ", slow " + compact(m.holdP90S())
                     : ", " + GoldFields.locked("slow")) + ")"
-                    : " " + GoldFields.locked("hold");
+                    : " " + GoldFields.unknown("hold");
             String shift = profitShift(m);
             Chat.local(mc, "§e[MidasFlip]§r §6▲ undercut§r on §b"
                     + NameMap.pretty(m.itemId(), m.compKey()) + "§r: yours "

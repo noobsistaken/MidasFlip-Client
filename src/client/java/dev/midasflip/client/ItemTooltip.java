@@ -88,7 +88,7 @@ public final class ItemTooltip {
             lines.add(Component.literal("§7net §a+" + coins(match.netProfit)
                     + " §8(" + Math.round(match.netMarginPct * 100) + "%)§r"
                     + (Boolean.TRUE.equals(match.fallingKnife) ? " §c⚠ falling§r"
-                    : match.fallingKnife == null ? " " + GoldFields.locked("falling") : "")));
+                    : match.fallingKnife == null ? "" : "")));
             lines.add(Component.literal("§8matched to board auction by item · count · price§r"));
         });
     }

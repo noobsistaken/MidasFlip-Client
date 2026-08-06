@@ -490,10 +490,13 @@ public final class SellOverlay {
             // base bucket + learned modifier deltas, amber-capped — the
             // sum is what the modifiers added, ×units for stack display.
             Double contributions = ItemTooltip.modContribSum(resp);
-            Phos.text(g, font, contributions == null
-                    ? GoldFields.locked("incl. modifiers")
-                    : "§7incl. modifiers §f+" + Phos.coins(contributions * units)
-                    + "§8 · amber§r", cx, cy, Phos.DIM);
+            // Same three-way split as the tooltip: a field that arrived with
+            // nothing learned reads "not available", never "Gold".
+            Phos.text(g, font, contributions != null
+                    ? "§7incl. modifiers §f+" + Phos.coins(contributions * units) + "§8 · amber§r"
+                    : ItemTooltip.hasModContribs(resp)
+                    ? GoldFields.unknown("incl. modifiers")
+                    : GoldFields.locked("incl. modifiers"), cx, cy, Phos.DIM);
             cy += 11;
             if (lorePath) {
                 // Lore path saw enchants only (LoreMods scope) — say so, so

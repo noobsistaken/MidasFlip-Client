@@ -517,9 +517,25 @@ public final class MidasflipShellScreen extends PhosScreen {
      *  Flips board uses — no new send mechanism. */
     private void auctions(GuiGraphicsExtractor g, int x, int w, int mx, int my) {
         int y = 36;
+        Phos.text(g, font, GoldFields.tempFree(), x, y, Phos.ACCENT);
+        y += 13;
         String chips = String.format(Locale.ROOT, "margin ≥ %d%% · ending ≤ %dm · top %d by net",
                 config.auctionMinMarginPct, config.auctionMaxEndMin, config.auctionMaxRows);
         Phos.text(g, font, "§8" + chips + "§r", x, y, Phos.FAINT);
+        y += 11;
+        // Unconditional risk line (audit 2026-08-06, item 6). The coin-lock
+        // and staleness warnings lived only inside an EXPANDED row, so the
+        // scanning view — the one people actually act on — showed a green
+        // margin and nothing else. A bid is not a BIN: the coins are gone
+        // until the auction ends, and losing the auction is the normal case,
+        // not the failure case. That belongs above the numbers, not behind a
+        // click.
+        // Not "~90s": the client TTL is 60s over a 60s server snapshot with
+        // publication lag on top, and MidasflipApi serves stale entries when
+        // the API is unreachable. A ceiling we do not hold does not belong on
+        // the line whose whole job is honesty.
+        Phos.text(g, font, "§c⚠ §7bids lock coins until the auction ends · you can be outbid · "
+                + "prices lag, verify in-game§r", x, y, Phos.DIM);
         y += 14;
 
         JsonElement el = api.get("/auctions/bids", 60_000);
@@ -730,6 +746,8 @@ public final class MidasflipShellScreen extends PhosScreen {
 
     private void value(GuiGraphicsExtractor g, int x, int w, int mx, int my) {
         int y = 36;
+        Phos.text(g, font, GoldFields.tempFree(), x, y, Phos.ACCENT);
+        y += 13;
         int bx = x;
         for (String k : new String[]{"all", "craft", "forge", "kat", "bz craft", "bz", "npc"}) {
             boolean sel = k.equals(kindFilter);
@@ -894,16 +912,22 @@ public final class MidasflipShellScreen extends PhosScreen {
     /** True when the pane can't render data yet — draws the right honest
      *  placeholder and the caller returns. The pro hint fires when the
      *  server answered 402 (these endpoints are PRO-gated server-side) or
-     *  has served nothing for ~3s while otherwise reachable. The mod holds
+     *  has served nothing for ~12s while otherwise reachable. The mod holds
      *  NO entitlement logic; it only reflects what the API serves. */
     private boolean proGateOrLoading(GuiGraphicsExtractor g, int x, int y, JsonElement el,
                                      String path, String what) {
         if (el != null && el.isJsonArray()) {
             return false;
         }
+        // A 402 is the server SAYING so. The second clause is an inference
+        // from silence, and inference must be slow: at 3s one timed-out
+        // request told a free-launch user that a free board was paid, on the
+        // same pane that now says "temporary free Gold" right above it
+        // (review 2026-08-06). Widening the window only ever shows LESS
+        // restriction than the server did, so it cannot become a bypass.
         boolean pro = (el != null && el.isJsonNull() && api.lastStatus(path) == 402)
                 || (el == null && !api.likelyDown()
-                    && System.currentTimeMillis() - kindSince > 3_000);
+                    && System.currentTimeMillis() - kindSince > 12_000);
         if (pro) {
             // Launch copy (owner 2026-08-05): Aug 11 is FREE and checkout does
             // not open until September, so a gated pane says WHEN it opens,

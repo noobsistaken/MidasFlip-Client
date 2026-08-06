@@ -433,6 +433,32 @@ public final class MidasflipConfig {
             }
         } catch (IOException | RuntimeException e) {
             Midasflip.LOG.warn("config unreadable, using defaults: {}", e.toString());
+            // Two very different failures land here, and they need opposite
+            // treatment. The config holds every threshold, preset and rule the
+            // user built, so the one thing we must never do is destroy it.
+            if (e instanceof com.google.gson.JsonParseException) {
+                // The bytes really are unparseable. Set them aside — under
+                // the name we actually READ, which on the rename-migration
+                // path is skyflip.json, not path(). Quarantining path() there
+                // would no-op while defaults overwrote the migration target,
+                // stranding every upgrader's settings unread forever
+                // (review 2026-08-06).
+                Path aside = SafeWrite.quarantine(file);
+                if (aside != null) {
+                    // A pre-token-store config still carries the bearer token
+                    // in plaintext, and the migration that strips it only runs
+                    // on a successful parse — so this copy keeps it. It was
+                    // most likely written at the default umask; lock it down.
+                    TokenStore.restrictToOwner(aside);
+                }
+            } else {
+                // Transient: a locked file, an EIO, a permissions blip. The
+                // bytes are probably fine and a restart recovers them, so
+                // neither rename nor overwrite — run on defaults in memory
+                // this session and leave the disk exactly as it is.
+                Midasflip.LOG.warn("config left untouched on disk · defaults are in-memory only this session");
+                return new MidasflipConfig();
+            }
         }
         MidasflipConfig def = new MidasflipConfig();
         def.save();
@@ -525,17 +551,19 @@ public final class MidasflipConfig {
      * before acknowledging a one-shot secret to the server.
      */
     public boolean save() {
-        try {
-            Path p = path();
-            Files.writeString(p, GSON.toJson(this));
-            // Owner-only where supported: the config still holds pairing
-            // metadata and preferences nobody else's processes need.
-            TokenStore.restrictToOwner(p);
-            return true;
-        } catch (IOException e) {
-            Midasflip.LOG.warn("config save failed: {}", e.toString());
+        Path p = path();
+        // Atomic: temp file then rename. A direct write truncates the live
+        // config first, so a crash mid-write leaves it empty and the next
+        // launch silently resets every setting. SafeWrite reports failure
+        // rather than throwing — a failed settings save must never take the
+        // game down.
+        if (!SafeWrite.write(p, GSON.toJson(this))) {
             return false;
         }
+        // Owner-only where supported: the config still holds pairing
+        // metadata and preferences nobody else's processes need.
+        TokenStore.restrictToOwner(p);
+        return true;
     }
 
     /** Pure extraction of the legacy plaintext token from a raw config

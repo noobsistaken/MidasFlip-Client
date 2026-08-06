@@ -1,5 +1,6 @@
 package dev.midasflip.client;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.minecraft.network.chat.Component;
@@ -227,7 +228,14 @@ public final class ItemTooltip {
                 + (units > 1 ? " · ×" + units : "")));
         if (bazaar) {
             FinderValuation.Result valuation = FinderValuation.from(est, resp);
-            lines.add(Component.literal(pess == null || opt == null
+            // Guard on backed() — target != null — NOT on the raw pess/opt
+            // fields merely being PRESENT. A bazaar row whose pess exists but
+            // is <= 0 passes a presence check, FinderValuation.from() then
+            // returns target=null, and the unbox below threw NPE and took the
+            // whole game down from a tooltip render (crash 2026-08-06).
+            // The other two call sites already used backed(); this one
+            // checked a different thing and looked correct.
+            lines.add(Component.literal(!valuation.backed() || opt == null
                     ? GoldFields.locked("bands")
                     : "§7instasell §a" + coins(valuation.target() * units)
                     + " §8· sell offer §f" + coins(valuation.high() * units) + "§r"));
@@ -263,10 +271,17 @@ public final class ItemTooltip {
                 // (spec transparency). The +sum is the learned modifier
                 // uplift the server itemized in mod_contributions.
                 Double contributions = modContribSum(resp);
-                lines.add(Component.literal(contributions == null
-                        ? GoldFields.locked("incl. modifiers")
-                        : "§7incl. modifiers §f+" + coins(contributions * units)
-                        + "§8 · amber conf§r"));
+                // Three distinct states, three distinct sentences. The field
+                // missing entirely is the Gold lock. The field ARRIVING with
+                // nothing learned is not a paywall — it is us having no
+                // measurement yet, and printing a price tag over that during
+                // a free launch tells the user their own data is being sold
+                // to them (review 2026-08-06).
+                lines.add(Component.literal(contributions != null
+                        ? "§7incl. modifiers §f+" + coins(contributions * units) + "§8 · amber conf§r"
+                        : hasModContribs(resp)
+                        ? GoldFields.unknown("incl. modifiers")
+                        : GoldFields.locked("incl. modifiers")));
                 // Itemized: a total tells you the modifiers are worth
                 // something, the breakdown tells you WHICH one carries the
                 // item — which is the difference between a number and an
@@ -479,45 +494,33 @@ public final class ItemTooltip {
         return "&mods=" + java.net.URLEncoder.encode(atoms, java.nio.charset.StandardCharsets.UTF_8);
     }
 
-    /** Biggest contributors first, as display lines. Capped so a heavily
-     *  modified item cannot push a tooltip off the screen; the remainder is
-     *  counted rather than silently dropped, because a hidden line is worse
-     *  than a shorter one. Empty when the server sent nothing usable. */
-    static java.util.List<String> modContribLines(JsonObject resp, int units) {
-        JsonObject contributions = GoldFields.optObj(resp, "mod_contributions");
-        if (contributions == null || contributions.size() == 0) {
-            return java.util.List.of();
-        }
-        record Row(String label, double coins) { }
-        java.util.List<Row> rows = new java.util.ArrayList<>();
-        for (var e : contributions.entrySet()) {
-            Double v = GoldFields.optNum(contributions, e.getKey());
-            if (v == null || v == 0) {
-                continue; // a zero contribution is noise, not information
-            }
-            rows.add(new Row(prettyAtom(e.getKey()), v * units));
-        }
-        rows.sort((a, b) -> Double.compare(Math.abs(b.coins()), Math.abs(a.coins())));
-        java.util.List<String> out = new java.util.ArrayList<>();
-        int shown = Math.min(rows.size(), MAX_CONTRIB_LINES);
-        for (int i = 0; i < shown; i++) {
-            Row r = rows.get(i);
-            // Sign is explicit: a modifier can subtract (candied pets do).
-            String sign = r.coins() >= 0 ? "+" : "-";
-            out.add("§8  " + r.label() + " §7" + sign + coins(Math.abs(r.coins())) + "§r");
-        }
-        if (rows.size() > shown) {
-            out.add("§8  +" + (rows.size() - shown) + " more§r");
-        }
-        return out;
-    }
-
+    /** The server's itemized per-modifier deltas, normalised to (label,
+     *  coins) pairs.
+     *
+     *  <p>CONTRACT: the backend sends a LIST, not an object —
+     *  `decompose_value` returns `list[dict]` of
+     *  {@code {"feature": atom, "learned_delta": coins, "learned": bool}}
+     *  and main.py assigns it straight to `mod_contributions`. The first
+     *  client read used optObj(), which rejects an array, so it returned
+     *  null every single time: the total rendered as a Gold lock and the
+     *  breakdown never appeared once. A shape mismatch that failed silently
+     *  in the safe direction, which is why it read as "thin coverage"
+     *  (audit finding, 2026-08-06).
+     *
+     *  <p>Both shapes are accepted. The list is the real contract; the
+     *  object form costs three lines and means a future server change
+     *  cannot blank this surface again.
+     *
+     *  <p>Unlearned atoms arrive with delta 0 and {@code learned:false} —
+     *  deliberately itemized by the server rather than guessed. They are
+     *  dropped here: "we know this adds nothing" and "we have not learned
+     *  this yet" are different claims, and only the second is true. */
     private static final int MAX_CONTRIB_LINES = 4;
 
-    /** Atom -> something a player reads. The grammar is ItemId.modAtoms':
+    /** Atom -> something a player reads. Grammar is ItemId.modAtoms':
      *  ult:&lt;name&gt;_&lt;lvl&gt;, ench6:&lt;bucket&gt;, gem:&lt;TYPE&gt;x&lt;n&gt;, hpb:&lt;n&gt;,
-     *  drill_parts, held:&lt;item&gt;. Unknown shapes are surfaced RAW rather than
-     *  guessed at, so a new atom shows up as itself instead of silently
+     *  drill_parts, held:&lt;item&gt;. Unknown shapes are surfaced RAW rather
+     *  than guessed at, so a new atom appears as itself instead of silently
      *  rendering as something it is not. */
     static String prettyAtom(String atom) {
         if (atom == null || atom.isBlank()) {
@@ -560,24 +563,132 @@ public final class ItemTooltip {
         return Character.toUpperCase(t.charAt(0)) + t.substring(1);
     }
 
-    /** Sum of the server's itemized per-modifier deltas (mod_contributions
-     *  map atom->coins), for the "incl. modifiers +X" marker. Null when
-     *  the field is unavailable or malformed. */
+    /** The server's itemized per-modifier deltas.
+     *
+     *  <p>decompose.py returns a LIST of {@code {feature, learned_delta,
+     *  learned}} rows. This only ever accepted a JSON object, so every array
+     *  was rejected outright and the breakdown never rendered once in
+     *  production (audit 2026-08-06). The object form is kept as a defensive
+     *  path, not because anything sends it.
+     *
+     *  <p>{@code learned:false} rows carry {@code learned_delta} 0.0 and mean
+     *  "no delta learned for this yet", NOT "this modifier is worth nothing".
+     *  Zeros are dropped for the same reason, and dropped HERE rather than in
+     *  each caller so the total and the breakdown can never disagree about
+     *  which rows count.
+     *
+     *  @param strict return null on ANY malformed row instead of skipping it.
+     *      The breakdown renders what it can read; the "+X" TOTAL must not,
+     *      because a partial sum presented as a whole one understates the
+     *      uplift while looking complete. */
+    static java.util.List<java.util.Map.Entry<String, Double>> modContribs(JsonObject resp, boolean strict) {
+        java.util.List<java.util.Map.Entry<String, Double>> out = new java.util.ArrayList<>();
+        if (resp == null) {
+            return strict ? null : out;
+        }
+        JsonElement raw = resp.get("mod_contributions");
+        if (raw == null || raw.isJsonNull()) {
+            return strict ? null : out;
+        }
+        if (raw.isJsonArray()) {
+            for (JsonElement e : raw.getAsJsonArray()) {
+                if (!e.isJsonObject()) {
+                    if (strict) {
+                        return null;
+                    }
+                    continue;
+                }
+                JsonObject o = e.getAsJsonObject();
+                Double d = GoldFields.optNum(o, "learned_delta");
+                String feature = GoldFields.optStr(o, "feature");
+                if (d == null || feature == null) {
+                    if (strict) {
+                        return null;
+                    }
+                    continue;
+                }
+                if (o.has("learned") && o.get("learned").isJsonPrimitive()
+                        && !o.get("learned").getAsBoolean()) {
+                    continue;
+                }
+                if (d != 0) {
+                    out.add(java.util.Map.entry(feature, d));
+                }
+            }
+            return out;
+        }
+        if (raw.isJsonObject()) {
+            JsonObject o = raw.getAsJsonObject();
+            for (String k : o.keySet()) {
+                Double d = GoldFields.optNum(o, k);
+                if (d == null) {
+                    if (strict) {
+                        return null;
+                    }
+                    continue;
+                }
+                if (d != 0) {
+                    out.add(java.util.Map.entry(k, d));
+                }
+            }
+            return out;
+        }
+        return strict ? null : out;
+    }
+
+    static java.util.List<java.util.Map.Entry<String, Double>> modContribs(JsonObject resp) {
+        return modContribs(resp, false);
+    }
+
+    /** Did the server send the field at all? Absence is what {@code locked()}
+     *  reads as Gold; a field that arrived but held nothing usable is a
+     *  different statement and gets {@code unknown()} instead. */
+    static boolean hasModContribs(JsonObject resp) {
+        JsonElement raw = resp == null ? null : resp.get("mod_contributions");
+        return raw != null && !raw.isJsonNull();
+    }
+
+    /** Sum of the itemized deltas, for the "incl. modifiers +X" marker.
+     *  Null when the server sent nothing usable — including when it sent a
+     *  row we could not read, because this number appears next to a price and
+     *  a silently partial total is a wrong one. */
     static Double modContribSum(JsonObject resp) {
-        JsonObject contributions = GoldFields.optObj(resp, "mod_contributions");
-        if (contributions == null) {
+        var rows = modContribs(resp, true);
+        if (rows == null || rows.isEmpty()) {
             return null;
         }
         double sum = 0;
-        for (var e : contributions.entrySet()) {
-            Double value = GoldFields.optNum(contributions, e.getKey());
-            if (value == null) {
-                return null;
-            }
-            sum += value;
+        for (var e : rows) {
+            sum += e.getValue();
         }
         return sum;
     }
+
+    /** Biggest contributors first, as display lines. Capped so a heavily
+     *  modified item cannot push a tooltip off the screen; the remainder is
+     *  counted rather than silently dropped, because a hidden line is worse
+     *  than a shorter one. */
+    static java.util.List<String> modContribLines(JsonObject resp, int units) {
+        var rows = new java.util.ArrayList<>(modContribs(resp));
+        if (rows.isEmpty()) {
+            return java.util.List.of();
+        }
+        rows.sort((x, y) -> Double.compare(Math.abs(y.getValue()), Math.abs(x.getValue())));
+        java.util.List<String> out = new java.util.ArrayList<>();
+        int shown = Math.min(rows.size(), MAX_CONTRIB_LINES);
+        for (int i = 0; i < shown; i++) {
+            var r = rows.get(i);
+            double coins = r.getValue() * units;
+            String sign = coins >= 0 ? "+" : "-";
+            out.add("§8  " + prettyAtom(r.getKey()) + " §7" + sign + coins(Math.abs(coins)) + "§r");
+        }
+        if (rows.size() > shown) {
+            out.add("§8  +" + (rows.size() - shown) + " more§r");
+        }
+        return out;
+    }
+
+
 
     private static String norm(String s) {
         return s == null ? "" : s.toUpperCase(Locale.ROOT)

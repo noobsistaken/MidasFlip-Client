@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -103,5 +105,126 @@ class ModContribLinesTest {
         assertEquals(List.of(), ItemTooltip.modContribLines(resp("{}"), 1));
         assertEquals(List.of(), ItemTooltip.modContribLines(
                 resp("{\"mod_contributions\": {}}"), 1));
+    }
+
+    // ---- the shape the server actually sends -------------------------------
+    // decompose.py returns a LIST of rows, not an object:
+    //   {"feature": a, "learned_delta": round(delta, 1), "learned": a in contribs}
+    // The client only ever accepted an object, so every array was rejected and
+    // the breakdown NEVER rendered once in production (audit 2026-08-06). These
+    // pin the real contract; the object cases above stay as the defensive path.
+
+    @Test
+    void theServersListFormRenders() {
+        List<String> out = ItemTooltip.modContribLines(resp("""
+                {"mod_contributions": [
+                    {"feature": "hpb:10",     "learned_delta": 400000.0,  "learned": true},
+                    {"feature": "ult:wise_5", "learned_delta": 2800000.0, "learned": true},
+                    {"feature": "ench6:3-5",  "learned_delta": 1000000.0, "learned": true}]}"""), 1);
+        assertEquals(3, out.size(), "an array must not be silently dropped");
+        assertTrue(out.get(0).contains("Ult. Wise 5"), out.get(0));
+        assertTrue(out.get(0).contains("2.8M"), out.get(0));
+        assertTrue(out.get(1).contains("3-5 high enchants"), out.get(1));
+        assertTrue(out.get(2).contains("10 hot potato"), out.get(2));
+    }
+
+    @Test
+    void anUnlearnedModifierIsNotShownAsWorthNothing() {
+        // learned:false carries learned_delta 0.0 and means "no delta learned
+        // for this yet" — NOT "this modifier is worth zero". Printing it as a
+        // zero row would state a market fact we never measured.
+        List<String> out = ItemTooltip.modContribLines(resp("""
+                {"mod_contributions": [
+                    {"feature": "ult:wise_5", "learned_delta": 2800000.0, "learned": true},
+                    {"feature": "shiny",      "learned_delta": 0.0,       "learned": false}]}"""), 1);
+        assertEquals(1, out.size());
+        assertTrue(out.get(0).contains("Ult. Wise 5"), out.get(0));
+    }
+
+    @Test
+    void listRowsScaleAndKeepTheirSign() {
+        // Note: decompose.py clamps negative medians to 0, so a negative
+        // learned_delta cannot currently reach us on this endpoint. Kept
+        // because the renderer must not invert a sign if that ever changes —
+        // candied pets genuinely subtract.
+        List<String> four = ItemTooltip.modContribLines(resp("""
+                {"mod_contributions": [
+                    {"feature": "hpb:10", "learned_delta": 500000.0, "learned": true}]}"""), 4);
+        assertTrue(four.get(0).contains("2.0M"), four.get(0));
+
+        List<String> candy = ItemTooltip.modContribLines(resp("""
+                {"mod_contributions": [
+                    {"feature": "held:candy", "learned_delta": -1300000.0, "learned": true}]}"""), 1);
+        assertTrue(candy.get(0).contains("-1.3M"), candy.get(0));
+    }
+
+    @Test
+    void malformedRowsAreSkippedNotCrashedOn() {
+        // A row missing either field, or the wrong type entirely, must cost
+        // that row only — a tooltip render happens every frame and must never
+        // throw on a payload the server changes under us.
+        List<String> out = ItemTooltip.modContribLines(resp("""
+                {"mod_contributions": [
+                    {"feature": "ult:wise_5", "learned_delta": 2800000.0, "learned": true},
+                    {"feature": "no_delta"},
+                    {"learned_delta": 5000.0},
+                    "not an object",
+                    null]}"""), 1);
+        assertEquals(1, out.size());
+        assertTrue(out.get(0).contains("Ult. Wise 5"), out.get(0));
+    }
+
+    @Test
+    void anEmptyOrNullListYieldsNoLines() {
+        assertEquals(List.of(), ItemTooltip.modContribLines(
+                resp("{\"mod_contributions\": []}"), 1));
+        assertEquals(List.of(), ItemTooltip.modContribLines(
+                resp("{\"mod_contributions\": null}"), 1));
+    }
+
+    // ---- the "+X" total ----------------------------------------------------
+    // This number sits next to a price, so it fails CLOSED where the
+    // breakdown fails soft: showing fewer lines is a smaller list, showing a
+    // partial sum is a wrong number that looks complete.
+
+    @Test
+    void theTotalRefusesToBePartial() {
+        // One unreadable row previously cost only that row, and the marker
+        // then presented the remaining sum as the whole uplift.
+        assertNull(ItemTooltip.modContribSum(resp("""
+                {"mod_contributions": [
+                    {"feature": "ult:wise_5", "learned_delta": 2800000.0, "learned": true},
+                    {"feature": "hpb:10",     "learned_delta": "?",       "learned": true}]}""")),
+                "a row we could not read must void the total, not shrink it");
+    }
+
+    @Test
+    void theTotalIsTheSumOfTheRowsShown() {
+        // Total and breakdown must never disagree about which rows count:
+        // zeros and unlearned rows are dropped in ONE place, for both.
+        JsonObject r = resp("""
+                {"mod_contributions": [
+                    {"feature": "ult:wise_5", "learned_delta": 2800000.0, "learned": true},
+                    {"feature": "hpb:10",     "learned_delta": 400000.0,  "learned": true},
+                    {"feature": "ench6:3-5",  "learned_delta": 0.0,       "learned": true},
+                    {"feature": "shiny",      "learned_delta": 0.0,       "learned": false}]}""");
+        assertEquals(3200000.0, ItemTooltip.modContribSum(r));
+        assertEquals(2, ItemTooltip.modContribLines(r, 1).size());
+    }
+
+    @Test
+    void nothingLearnedIsNotAPaywall() {
+        // The distinction that matters at a free launch. The field ARRIVING
+        // with nothing learned means we have no measurement; the field being
+        // absent is what the Gold lock reads. Rendering the first as the
+        // second sells the user data we simply do not have.
+        JsonObject unlearned = resp("""
+                {"mod_contributions": [
+                    {"feature": "shiny", "learned_delta": 0.0, "learned": false}]}""");
+        assertNull(ItemTooltip.modContribSum(unlearned));
+        assertTrue(ItemTooltip.hasModContribs(unlearned), "→ unknown(), not locked()");
+
+        assertFalse(ItemTooltip.hasModContribs(resp("{}")), "absent → locked()");
+        assertFalse(ItemTooltip.hasModContribs(resp("{\"mod_contributions\": null}")));
     }
 }

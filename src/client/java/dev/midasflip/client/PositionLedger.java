@@ -96,6 +96,12 @@ public final class PositionLedger {
     static final long UNCONFIRMED_AFTER_MS = 72L * 60 * 60 * 1000;
 
     private final List<Position> positions;
+    /** Set when load() could not read an EXISTING file for a reason that was
+     *  not corruption. Blocks every save for the session: an empty in-memory
+     *  list written back over a file we simply failed to read would destroy
+     *  the whole position history over one bad second of I/O — strictly worse
+     *  than the truncation this class exists to prevent (review 2026-08-06). */
+    private boolean readOnly;
 
     public PositionLedger() {
         positions = load();
@@ -416,18 +422,34 @@ public final class PositionLedger {
                     return got;
                 }
             }
-        } catch (IOException | RuntimeException e) {
+        } catch (com.google.gson.JsonParseException e) {
+            // Keep the bytes. This file is the user's position history and
+            // cost basis; if it ever does get mangled, those bytes are the
+            // only route back. Starting fresh straight over the top would
+            // destroy the evidence at exactly the moment it matters, so the
+            // bad file is set aside with a .corrupt suffix instead.
             Midasflip.LOG.warn("ledger unreadable, starting fresh: {}", e.toString());
+            SafeWrite.quarantine(path());
+        } catch (IOException | RuntimeException e) {
+            // NOT corruption — a file locked by a backup or antivirus pass, an
+            // EIO, a permissions blip. The bytes are probably intact, so the
+            // file is neither renamed nor written: the ledger goes read-only
+            // for the session and a restart recovers everything.
+            Midasflip.LOG.warn("ledger could not be read · left untouched, tracking paused this session: {}",
+                    e.toString());
+            readOnly = true;
         }
         return new ArrayList<>();
     }
 
     private void save() {
-        try {
-            Files.writeString(path(), GSON.toJson(positions));
-        } catch (IOException e) {
-            Midasflip.LOG.warn("ledger save failed: {}", e.toString());
+        if (readOnly) {
+            return; // see the field: never overwrite a file we failed to read
         }
+        // Atomic: this file IS the user's position history and their cost
+        // basis. A truncated write loses money they cannot reconstruct from
+        // anywhere else, and the mod writes here on every purchase.
+        SafeWrite.write(path(), GSON.toJson(positions));
     }
 
     private static Path path() {

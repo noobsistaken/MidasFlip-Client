@@ -3,7 +3,6 @@ package dev.midasflip.client;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayDeque;
-import java.util.Iterator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -20,7 +19,7 @@ import java.util.regex.Pattern;
 public final class SessionTracker {
     // "You purchased ◆ Ink Wand ✦ for 1,300,000 coins!" — tolerate any item
     // text; the price is the disambiguator.
-    private static final Pattern PURCHASED =
+    static final Pattern PURCHASED =
             Pattern.compile("^You purchased (.+?) for ([\\d,]+) coins!?$");
     // Ledger state transitions, parse-only (owner spec): our listing
     // started; one of our auctions sold.
@@ -90,7 +89,7 @@ public final class SessionTracker {
         } catch (NumberFormatException e) {
             return;
         }
-        Flip match = attribute(price);
+        Flip match = attribute(m.group(1), price);
         if (match == null) {
             return; // a purchase we didn't broker — not ours to count
         }
@@ -108,25 +107,117 @@ public final class SessionTracker {
                 match.itemId + " price=" + price + " est_profit=" + (long) match.netProfit);
     }
 
-    /** Exact-price match against recent opens first (strong signal), then
-     *  most-recent-open within the attribution window as fallback. */
-    private synchronized Flip attribute(long price) {
+    /** Attribute a purchase to an opened flip, using BOTH signals the chat
+     *  line carries.
+     *
+     *  <p>The parser has always captured the item name and the old matcher
+     *  ignored it, matching on price alone and then falling back to "the most
+     *  recently opened flip" regardless of what was bought. Three ways that
+     *  went wrong: a manual purchase you made yourself got booked as a
+     *  MidasFlip position; two different items opened at the same price
+     *  collapsed onto one flip; and matched opens were never removed, so one
+     *  open could absorb several purchases — duplicating positions and
+     *  session profit, and marking the wrong row gone on the board (audit
+     *  2026-08-06).
+     *
+     *  <p>Tiers, strongest first. Every tier REMOVES the open it consumed,
+     *  so a second purchase cannot match the same flip again:
+     *  <ol>
+     *    <li>name AND price both match — unambiguous</li>
+     *    <li>price matches exactly — price is highly discriminating and the
+     *        display name can differ from our own rendering</li>
+     *    <li>name matches inside the attribution window — covers a price we
+     *        misparsed, still anchored to the right item</li>
+     *  </ol>
+     *  No tier matches ⇒ null ⇒ not ours, not counted. Attributing a
+     *  stranger's purchase is worse than missing one of ours: it corrupts
+     *  the ledger and the session numbers with data we invented. */
+    synchronized Flip attribute(String purchasedName, long price) { // package-private for SessionAttributionTest
         long now = System.currentTimeMillis();
-        for (Iterator<Opened> it = recentOpens.iterator(); it.hasNext(); ) {
-            if (now - it.next().atMs > 5 * 60_000) {
-                it.remove();
+        recentOpens.removeIf(o -> now - o.atMs() > 5 * 60_000);
+        String exact = norm(purchasedName);
+        String base = normDereforged(purchasedName);
+
+        Opened hit = null;
+        for (Opened o : recentOpens) {          // tier 1: name + price
+            if (o.flip().buyPrice == price && sameItem(exact, base, o.flip(), true)) {
+                hit = o;
+                break;
             }
         }
-        for (Opened o : recentOpens) {
-            if (o.flip.buyPrice == price) {
-                return o.flip;
+        if (hit == null) {
+            for (Opened o : recentOpens) {      // tier 2: exact price
+                if (o.flip().buyPrice == price) {
+                    hit = o;
+                    break;
+                }
             }
         }
-        Opened newest = recentOpens.peekFirst();
-        if (newest != null && now - newest.atMs <= OPEN_ATTRIBUTION_MS) {
-            return newest.flip;
+        if (hit == null && !exact.isEmpty()) {  // tier 3: name, in window
+            for (Opened o : recentOpens) {
+                if (now - o.atMs() <= OPEN_ATTRIBUTION_MS
+                        && sameItem(exact, base, o.flip(), false)) {
+                    hit = o;
+                    break;
+                }
+            }
         }
-        return null;
+        if (hit == null) {
+            return null;
+        }
+        recentOpens.remove(hit); // consumed — one open cannot absorb two buys
+        return hit.flip();
+    }
+
+    /** Does the chat line name the item this flip is for?
+     *
+     *  <p>Compares against the FULL name first and only then against the
+     *  reforge-stripped form, which is {@link SellOverlay#stripReforge}'s
+     *  documented contract and not optional here: several reforge words are
+     *  literally armor-set names, so stripping unconditionally collapses
+     *  "Wise Dragon Boots", "Strong Dragon Boots" and "Superior Dragon Boots"
+     *  onto one another. Booking a manually-bought Superior against an open
+     *  Wise flip is precisely the misattribution this whole function replaced,
+     *  one layer further down (review 2026-08-06).
+     *
+     *  <p>The fallback strips the CHAT side only. Hypixel prefixes the reforge
+     *  onto the display name ("Fierce Superior Dragon Helmet"); our side is
+     *  the item's own name and never carries one, so stripping it too would
+     *  amputate a real word from the set name and could never re-align.
+     *
+     *  <p>{@code corroborated} is true when the caller already matched the
+     *  price to the coin. Looseness scales with corroboration: with a price
+     *  match the reforge fallback is safe, but a name-only match (tier 3)
+     *  writes a position off the name alone and takes the exact form only. */
+    private static boolean sameItem(String exact, String base, Flip flip, boolean corroborated) {
+        if (exact.isEmpty()) {
+            return false;
+        }
+        String ours = norm(NameMap.pretty(flip.itemId, flip.compKey));
+        if (ours.isEmpty()) {
+            return false;
+        }
+        return exact.equals(ours) || (corroborated && !base.isEmpty() && base.equals(ours));
+    }
+
+    /** Display name to comparable shape — colour codes, the stack-count
+     *  prefix and the star/ability glyphs Hypixel decorates names with. The
+     *  reforge word is deliberately NOT touched; see {@link #sameItem}. */
+    static String norm(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        return SellOverlay.norm(SellOverlay.cleanName(raw.replaceAll("§.", "")));
+    }
+
+    /** As {@link #norm}, with a leading reforge word removed. Only ever the
+     *  second thing tried, and only against the chat side. */
+    static String normDereforged(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        return SellOverlay.norm(SellOverlay.stripReforge(
+                SellOverlay.cleanName(raw.replaceAll("§.", ""))));
     }
 
     public synchronized int boughtCount() {

@@ -2,8 +2,11 @@ package dev.midasflip.client;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 import java.util.Locale;
@@ -215,12 +218,18 @@ public final class ItemTooltip {
             bucket = "bazaar";
         } else if (pet != null) {
             bucket = "pet bucket";
-        } else if (resp.has("comp_key")) {
-            String ck = resp.get("comp_key").getAsString();
-            if (ck.matches(".*\\|s\\d+\\|r1.*")) {
-                bucket = "recomb bucket";
-            } else if (ck.matches(".*\\|s[1-9]\\d*\\|r\\d.*")) {
-                bucket = "starred bucket";
+        }
+        if (!bazaar && resp.has("comp_key") && resp.get("comp_key").isJsonPrimitive()) {
+            // Name the state that was priced, not the bucket FAMILY. "starred
+            // bucket" never said WHICH star count, and "were my stars, my
+            // recomb, my scrolls counted?" is the commonest doubt about the
+            // estimate (owner 2026-08-07). The comp key is the server's own
+            // answer, so it is read rather than re-derived here. Null means
+            // the key carries nothing beyond identity, and the generic label
+            // above stands.
+            String state = bucketState(resp.get("comp_key").getAsString());
+            if (state != null) {
+                bucket = state;
             }
         }
         boolean lowball = resp.has("fallback_from_mods");
@@ -305,7 +314,7 @@ public final class ItemTooltip {
                 // item — which is the difference between a number and an
                 // argument. The server already returns this map; the client
                 // used to sum it and throw the parts away (owner 2026-08-01).
-                for (String line : modContribLines(resp, units)) {
+                for (String line : modContribLines(resp, units, shiftHeld())) {
                     lines.add(Component.literal(line));
                 }
                 if (lorePath) {
@@ -704,18 +713,34 @@ public final class ItemTooltip {
         return sum;
     }
 
+    /** Biggest contributors first, as display lines, collapsed to the cap.
+     *  Kept as the plain entry point for callers with no key state to read. */
+    static java.util.List<String> modContribLines(JsonObject resp, int units) {
+        return modContribLines(resp, units, false);
+    }
+
     /** Biggest contributors first, as display lines. Capped so a heavily
      *  modified item cannot push a tooltip off the screen; the remainder is
      *  counted rather than silently dropped, because a hidden line is worse
-     *  than a shorter one. */
-    static java.util.List<String> modContribLines(JsonObject resp, int units) {
+     *  than a shorter one.
+     *
+     *  <p>Counted was still not reachable: "+3 more" named rows the user had
+     *  no way to ever see, on the one surface that explains where the price
+     *  came from. {@code expanded} lifts the cap entirely, and the remainder
+     *  line carries the hint that lifts it — the hint rides that line instead
+     *  of taking one of its own precisely because it is only ever needed when
+     *  that line already exists, and tooltip rows are the scarce thing here.
+     *
+     *  @param expanded caller-read key state (see {@link #shiftHeld()}), never
+     *      captured input. */
+    static java.util.List<String> modContribLines(JsonObject resp, int units, boolean expanded) {
         var rows = new java.util.ArrayList<>(modContribs(resp));
         if (rows.isEmpty()) {
             return java.util.List.of();
         }
         rows.sort((x, y) -> Double.compare(Math.abs(y.getValue()), Math.abs(x.getValue())));
         java.util.List<String> out = new java.util.ArrayList<>();
-        int shown = Math.min(rows.size(), MAX_CONTRIB_LINES);
+        int shown = expanded ? rows.size() : Math.min(rows.size(), MAX_CONTRIB_LINES);
         for (int i = 0; i < shown; i++) {
             var r = rows.get(i);
             double coins = r.getValue() * units;
@@ -723,9 +748,128 @@ public final class ItemTooltip {
             out.add("§8  " + prettyAtom(r.getKey()) + " §7" + sign + coins(Math.abs(coins)) + "§r");
         }
         if (rows.size() > shown) {
-            out.add("§8  +" + (rows.size() - shown) + " more§r");
+            out.add("§8  +" + (rows.size() - shown) + " more · hold SHIFT to see all§r");
         }
         return out;
+    }
+
+    /** Either shift key, read the way the shell reads TAB for its comps peek
+     *  (MidasflipShellScreen). READ-ONLY: this asks the window what a key is
+     *  already doing so it can decide what TEXT to draw. Nothing is captured
+     *  or consumed, so shift keeps doing whatever vanilla does with it. */
+    private static boolean shiftHeld() {
+        var window = Minecraft.getInstance().getWindow();
+        return InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_SHIFT)
+                || InputConstants.isKeyDown(window, GLFW.GLFW_KEY_RIGHT_SHIFT);
+    }
+
+    /** Longest bucket phrase we will render. A tooltip line competes with
+     *  Hypixel's own lore for width, so an item wearing a lot of state gets
+     *  elided rather than wrapping the header. */
+    private static final int MAX_BUCKET_STATE = 40;
+
+    /** A comp key as the STATE it describes: "5✪ recombed · 3 scrolls".
+     *  Null when the key says nothing beyond identity, which leaves the
+     *  caller's generic label ("clean bucket", "bazaar", "pet bucket") in
+     *  place.
+     *
+     *  <p>Grammar, from the live corpus: {@code v1|<ID>|s<N>|r<0|1>} then any
+     *  of {@code em}, {@code sc:A+B+C}, {@code k:<SKIN>}; pets are
+     *  {@code v1|PET|<TYPE>|<TIER>|x<N>} plus optional {@code c1} / {@code tb}.
+     *  Identity segments are skipped because the player is already looking at
+     *  the item; everything after them is state.
+     *
+     *  <p>An unrecognised segment is passed through VERBATIM — never dropped,
+     *  never guessed at, the same rule {@link #prettyAtom} follows. Dropping
+     *  one would tell the user their item was priced without it, which is the
+     *  exact opposite of the truth; showing it raw reads as unfamiliar, which
+     *  is what it is. A key that is not our shape at all returns null rather
+     *  than printing itself into the header. */
+    static String bucketState(String compKey) {
+        if (compKey == null || compKey.isBlank()) {
+            return null;
+        }
+        String[] seg = compKey.split("\\|", -1);
+        if (seg.length < 2 || !seg[0].matches("v\\d+")) {
+            return null;
+        }
+        int stars = 0;
+        boolean recombed = false;
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        // seg[1] is the item id; a pet spends two more on type and tier.
+        for (int i = "PET".equals(seg[1]) ? 4 : 2; i < seg.length; i++) {
+            String s = seg[i];
+            if (s.isEmpty()) {
+                continue;
+            }
+            if (s.matches("s\\d{1,3}")) {
+                // Bounded BEFORE parsing, not after. "s99999999999" matched
+                // the old unbounded \\d+ and then overflowed Integer.parseInt
+                // — a NumberFormatException thrown inside the per-frame
+                // tooltip render, which has no try/catch anywhere above it.
+                // That is the same failure that took the whole game down on
+                // 2026-08-06, and this runs on EVERY hover carrying a comp
+                // key, so the exposure is far wider than the old starsOf.
+                // A key we cannot read falls through to verbatim below, which
+                // is the honest outcome: show it, do not guess, do not crash.
+                stars = Integer.parseInt(s.substring(1));   // s0 says nothing
+            } else if (s.equals("r0")) {
+                continue;                                   // not recombed
+            } else if (s.equals("r1")) {
+                recombed = true;
+            } else if (s.equals("em")) {
+                parts.add("ethermerged");
+            } else if (s.startsWith("sc:") && !s.substring(3).isBlank()) {
+                int n = s.substring(3).split("\\+").length;
+                parts.add(n + (n == 1 ? " scroll" : " scrolls"));
+            } else if (s.startsWith("k:") && !s.substring(2).isBlank()) {
+                parts.add("skin");
+            } else if (s.matches("x\\d+")) {
+                parts.add(s + " exp bucket");
+            } else if (s.equals("c1")) {
+                parts.add("candied");
+            } else if (s.equals("tb")) {
+                parts.add("tier boost");
+            } else {
+                parts.add(s);
+            }
+        }
+        // Stars and recomb are one upgrade story, so they read as one phrase.
+        // ✪ is Hypixel's own glyph and the tooltip renders directly under the
+        // lore carrying it, so "5✪" matches what the player is looking at. ★
+        // is spoken for in this mod: it marks a rule-starred board row.
+        String core = stars > 0 ? stars + "✪" : "";
+        if (recombed) {
+            core = core.isEmpty() ? "recombed" : core + " recombed";
+        }
+        if (!core.isEmpty()) {
+            parts.add(0, core);
+        }
+        if (parts.isEmpty()) {
+            return null;
+        }
+        String phrase = String.join(" · ", parts);
+        if (phrase.length() <= MAX_BUCKET_STATE) {
+            return phrase;
+        }
+        // Drop WHOLE parts from the end until it fits, and say how many went.
+        // A raw substring cut the last part first, and unknown segments are
+        // appended last — so the one class of segment the verbatim rule
+        // exists to protect was the first thing thrown away, mid-word, with
+        // no way to ever see it (review 2026-08-07). Losing "+2 more" is a
+        // countable omission; losing "shin…" is a lie about what was priced.
+        var kept = new java.util.ArrayList<>(parts);
+        while (kept.size() > 1
+                && String.join(" · ", kept).length() + 8 > MAX_BUCKET_STATE) {
+            kept.remove(kept.size() - 1);
+        }
+        int dropped = parts.size() - kept.size();
+        String head = String.join(" · ", kept);
+        if (dropped == 0) {
+            return head.length() <= MAX_BUCKET_STATE
+                    ? head : head.substring(0, MAX_BUCKET_STATE - 1).strip() + "…";
+        }
+        return head + " +" + dropped + " more";
     }
 
 

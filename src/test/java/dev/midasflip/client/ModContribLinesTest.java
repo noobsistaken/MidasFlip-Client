@@ -182,6 +182,59 @@ class ModContribLinesTest {
                 resp("{\"mod_contributions\": null}"), 1));
     }
 
+    // ---- hold SHIFT to expand ---------------------------------------------
+    // The cap kept the tooltip a sane height but made the hidden rows
+    // unreachable forever: "+3 more" named evidence for the price with no way
+    // to ever read it. The expanded flag is key state the render site reads;
+    // these drive it directly, without a game window.
+
+    private static final String SIX_ROWS = """
+            {"mod_contributions": {"a": 9, "b": 8, "c": 7,
+                                   "d": 6, "e": 5, "f": 4}}""";
+
+    @Test
+    void theHintAppearsOnlyWhenRowsAreActuallyHidden() {
+        List<String> hidden = ItemTooltip.modContribLines(resp(SIX_ROWS), 1, false);
+        assertTrue(hidden.get(hidden.size() - 1).contains("hold SHIFT"),
+                "the way out of the cap has to be on screen: " + hidden);
+
+        List<String> short3 = ItemTooltip.modContribLines(resp("""
+                {"mod_contributions": {"a": 9, "b": 8, "c": 7}}"""), 1, false);
+        assertEquals(3, short3.size());
+        assertFalse(String.join("", short3).contains("hold SHIFT"),
+                "nothing is hidden, so the hint would be an instruction to nowhere");
+    }
+
+    @Test
+    void shiftShowsEveryRowAndNothingIsLeftCounted() {
+        List<String> out = ItemTooltip.modContribLines(resp(SIX_ROWS), 1, true);
+        assertEquals(6, out.size(), "every contributor, no remainder line");
+        assertFalse(String.join("", out).contains("more"), out.toString());
+        assertFalse(String.join("", out).contains("hold SHIFT"),
+                "already expanded — the hint has nothing left to offer");
+    }
+
+    @Test
+    void collapsedStillCapsAtFour() {
+        // The cap is why the tooltip fits at all; expanding must be the
+        // exception the user asks for, never the new default.
+        List<String> out = ItemTooltip.modContribLines(resp(SIX_ROWS), 1, false);
+        assertEquals(5, out.size(), "4 rows plus the remainder line");
+        assertTrue(out.get(4).contains("2 more"), out.get(4));
+        assertEquals(out, ItemTooltip.modContribLines(resp(SIX_ROWS), 1),
+                "the two-arg form is the collapsed form, unchanged");
+    }
+
+    @Test
+    void aShortListLooksTheSameInBothModes() {
+        JsonObject r = resp("""
+                {"mod_contributions": {"ult:wise_5": 2800000, "hpb:10": 400000}}""");
+        assertEquals(ItemTooltip.modContribLines(r, 1, false),
+                ItemTooltip.modContribLines(r, 1, true),
+                "holding shift over an item with 2 modifiers must not change it");
+        assertEquals(2, ItemTooltip.modContribLines(r, 1, true).size());
+    }
+
     // ---- the "+X" total ----------------------------------------------------
     // This number sits next to a price, so it fails CLOSED where the
     // breakdown fails soft: showing fewer lines is a smaller list, showing a

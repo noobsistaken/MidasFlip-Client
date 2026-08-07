@@ -170,9 +170,18 @@ final class GoldFields {
      *  #locked} is for a field the server withheld and {@link #unknown} for
      *  one nobody has. The three must not converge into one sentence. */
     static String badge() {
-        return shaping()
-                ? "§6Gold §8· " + FOUNDER_LINE + "§r"
-                : "§6" + EARLY_ACCESS + " §8· " + FOUNDER_LINE + "§r";
+        return shaping() ? "§6Gold§r" : "§6" + EARLY_ACCESS + "§r";
+    }
+
+    /** The badge PLUS the founder offer. Exactly ONE call site — the
+     *  Dashboard pane (owner 2026-08-07).
+     *
+     *  <p>It was on all eight badged surfaces and that was too much: a price
+     *  repeated on every pane reads as nagging rather than as an offer, and
+     *  the thing being sold is the same thing in every case. One place where
+     *  the user is already looking at their own money is enough. */
+    static String badgeWithOffer() {
+        return badge() + " §8· " + FOUNDER_LINE + "§r";
     }
 
     static String unknown(String label) {

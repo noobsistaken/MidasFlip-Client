@@ -77,11 +77,7 @@ public final class ItemTooltip {
             }
             lines.add(Component.literal(""));
             lines.add(Component.literal("§6§lMidasFlip"));
-            lines.add(Component.literal(match.estPess == null
-                    ? GoldFields.locked("sell target")
-                    : "§7sell target §a" + coins(match.estPess)
-                    + "  §7conf §f" + String.format(Locale.ROOT, "%.2f", match.confidence)
-                    + " §8(" + match.comps + " comps)§r"));
+            lines.add(Component.literal(listAtLine(match.estPess, match.confidence, match.comps)));
             lines.add(Component.literal(match.estOpt == null
                     ? GoldFields.locked("bands")
                     : "§7fair §f" + coins(match.estBase)
@@ -261,8 +257,19 @@ public final class ItemTooltip {
             FinderValuation.Result valuation = FinderValuation.from(est, resp);
             if (valuation.backed()) {
                 goldShown = true;   // sell target + bands
-                lines.add(Component.literal("§7sell target §a" + coins(valuation.target() * units)
-                        + " §8· finder valuation§r"));
+                // "list at", not "sell target" — this is a GROSS price, the
+                // figure you type into the auction sign, and the board's
+                // profit numbers are NET of the AH fee model. Owner hit the
+                // gap on a pet: overlay said 29.5M, board said 28.6M, and
+                // they are the same coin — net(29,500,000) = 28,614,000
+                // after the 2% listing fee, the 1% claim tax and the
+                // duration fee. Both were right and neither said which it
+                // was, so the honest reading was to list at 28.6M and
+                // silently give up ~900k of margin (owner report
+                // 2026-08-07). The client does not compute fees — it says
+                // plainly which side of them this number sits on.
+                lines.add(Component.literal("§7list at §a" + coins(valuation.target() * units)
+                        + " §8· before AH fees§r"));
                 lines.add(Component.literal(opt == null
                         ? GoldFields.locked("bands")
                         : "§7fair §f" + coins(valuation.fair() * units)
@@ -600,6 +607,28 @@ public final class ItemTooltip {
      *      The breakdown renders what it can read; the "+X" TOTAL must not,
      *      because a partial sum presented as a whole one understates the
      *      uplift while looking complete. */
+    /** The board-matched headline: the listing price, then the evidence.
+     *
+     *  <p>Confidence and comp count are FREE (owner tier split 2026-08-06)
+     *  but lived inside the same else-branch as the Gold price, so a
+     *  withheld price took them down with it — free data discarded because
+     *  it happened to sit next to paid data, which is the same defect that
+     *  once hid the patient badge behind its exits. They render either way
+     *  now.
+     *
+     *  <p>"list at", not "sell target": this is GROSS, the number typed into
+     *  the auction sign, while the board's profit is NET of the AH fee
+     *  model. net(29,500,000) = 28,614,000, and an owner reading the two as
+     *  one figure listed at the net price would hand ~900k of margin back
+     *  per flip (owner report 2026-08-07). */
+    static String listAtLine(Double estPess, double confidence, int comps) {
+        String evidence = "  §7conf §f" + String.format(Locale.ROOT, "%.2f", confidence)
+                + " §8(" + comps + " comps)§r";
+        return (estPess == null
+                ? GoldFields.locked("list at")
+                : "§7list at §a" + coins(estPess) + " §8(gross)§r") + evidence;
+    }
+
     static java.util.List<java.util.Map.Entry<String, Double>> modContribs(JsonObject resp, boolean strict) {
         java.util.List<java.util.Map.Entry<String, Double>> out = new java.util.ArrayList<>();
         if (resp == null) {

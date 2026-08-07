@@ -262,7 +262,10 @@ public final class MidasflipShellScreen extends PhosScreen {
         ListingsWatch.tick(Minecraft.getInstance());
         List<ListingsWatch.Mine> mine = ListingsWatch.mine();
         int underc = ListingsWatch.undercuts().size();
-        Phos.text(g, font, GoldFields.badge(), x, y - 1, Phos.ACCENT);
+        // The ONLY place the founder offer appears (owner 2026-08-07). The
+        // user is already looking at their own P&L here, which is the one
+        // context where a price is information rather than an interruption.
+        Phos.text(g, font, GoldFields.badgeWithOffer(), x, y - 1, Phos.ACCENT);
         y += 12;
         Phos.label(g, font, "your open auctions" + (mine.isEmpty() ? "" : " · " + mine.size()
                 + (underc > 0 ? " · §6" + underc + " undercut§8" : "")), x, y);

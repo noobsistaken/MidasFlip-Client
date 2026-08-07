@@ -138,7 +138,7 @@ class GoldFieldsTest {
             assertFalse(GoldFields.badge().contains(GoldFields.EARLY_ACCESS),
                     "a shaped payload means Gold is being withheld — not free");
             assertTrue(GoldFields.badge().contains("Gold"));
-            assertTrue(GoldFields.badge().contains("Founder"), "the offer survives the switch");
+            assertTrue(GoldFields.badgeWithOffer().contains("Founder"), "the offer survives the switch");
         } finally {
             GoldFields.resetShapingForTest();
         }
@@ -156,11 +156,21 @@ class GoldFieldsTest {
     }
 
     @Test
+    void thePlainBadgeQuotesNoPrice() {
+        // One offer site, not eight (owner 2026-08-07): a price repeated on
+        // every pane reads as nagging, and it is the same offer every time.
+        assertFalse(GoldFields.badge().contains("€"), GoldFields.badge());
+        assertFalse(GoldFields.badge().contains("Founder"), GoldFields.badge());
+        assertTrue(GoldFields.badgeWithOffer().startsWith(GoldFields.badge()),
+                "the offer variant must be the badge plus the offer, not a different sentence");
+    }
+
+    @Test
     void theFounderOfferNamesThePriceAndWhereToGo() {
         // The one place a price IS allowed, because it is attached to an
         // action the user can actually take (the waitlist), not stamped over
         // a feature they cannot buy yet.
-        String offer = GoldFields.badge();
+        String offer = GoldFields.badgeWithOffer();
         assertTrue(offer.contains("€40"), offer);
         assertTrue(offer.contains("Founder"), offer);
         assertTrue(offer.contains("for life"), offer);

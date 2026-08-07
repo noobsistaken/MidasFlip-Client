@@ -292,7 +292,7 @@ public final class SellOverlay {
         int w = 158;
         // 11px of that is the early-access badge drawn below the valuation
         // header; without it the bucket/comps note crossed the bottom border.
-        int h = 107 + (pos != null ? 13 : 0) + (underwater ? 22 : 0);
+        int h = 118 + (pos != null ? 13 : 0) + (underwater ? 22 : 0);
         if (maybeDecomposed) {
             h += 11;                       // "incl. modifiers +X · amber" line
         }
@@ -481,11 +481,23 @@ public final class SellOverlay {
             Phos.text(g, font, GoldFields.locked("bands"), cx, cy, Phos.FAINT);
             cy += 13;
         } else if (valuation.backed()) {
-            row(g, font, cx, cy, "sell target", valuation.target() * units, null);
+            // GROSS — the figure you type into the sign. The board's profit
+            // numbers are NET of the AH fee model, so the same coin shows up
+            // as two different amounts: net(29,500,000) = 28,614,000 after
+            // the 2% listing fee, 1% claim tax and duration fee. The owner
+            // hit exactly that on a pet (29.5M here vs 28.6M on the board)
+            // and read it as a contradiction. Listing at the NET figure
+            // instead would have quietly cost ~900k of margin, so which side
+            // of the fees this sits on has to be on screen. The client does
+            // not compute fees (see PositionLedger.underwater) — it only
+            // says which number this is.
+            row(g, font, cx, cy, "list at", valuation.target() * units, null);
             cy += 11;
             row(g, font, cx, cy, "fair", valuation.fair() * units, null);
             cy += 11;
             row(g, font, cx, cy, "high", valuation.high() * units, null);
+            cy += 11;
+            Phos.text(g, font, "§8gross · AH fees come off§r", cx, cy, Phos.FAINT);
             cy += 13;
         } else {
             Phos.text(g, font, "§evalue unverified§r", cx, cy, Phos.YELLOW);

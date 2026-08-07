@@ -1500,71 +1500,67 @@ public final class MidasflipShellScreen extends PhosScreen {
 
     /** What Free gets, what Gold gets, and which one you are on.
      *
-     *  <p>Leads with speed because that is the question people actually have
-     *  and the answer is the whole positioning: the flip feed is the SAME
-     *  feed at the SAME moment for everyone. Coflnet sells latency tiers —
-     *  paying users get flips first. We decided never to (locked, pricing
-     *  2026-07-14: "no latency/speed tiers ever"), so a delay column that
-     *  reads 0s / 0s is not filler, it is the differentiator stated as a
-     *  fact the user can check against their own board.
+     *  <p>A table, so the two columns can be read ACROSS a row rather than
+     *  compared between two lists — the question is "what changes", and a
+     *  row where both cells are ticked answers it faster than finding the
+     *  same words twice.
      *
-     *  <p>The lists are honest in both directions. Free is not a teaser tier
-     *  and Gold is not the product — Free is the whole verdict, Gold is the
-     *  workings behind it. */
+     *  <p>Speed is the first row on purpose. It is the question people
+     *  actually have, and the answer is the whole positioning: Coflnet sells
+     *  latency tiers, so paying users get flips first. We decided never to
+     *  (locked, pricing 2026-07-14: "no latency/speed tiers ever"), which
+     *  makes a row reading 0s / 0s the differentiator rather than filler —
+     *  and one the user can check against their own board.
+     *
+     *  <p>Honest in both directions: Free is the whole verdict, not a
+     *  teaser, and Gold is the workings, not the product. */
     private void plan(GuiGraphicsExtractor g, int x, int w) {
         int y = 32;
-
-        // Speed first, both columns, deliberately identical.
-        Phos.panel(g, x, y, w, 42);
-        Phos.label(g, font, "flip speed", x + 8, y + 6);
-        Phos.text(g, font, "§7free §a0s delay§8  ·  §7Gold §a0s delay§r", x + 8, y + 18, Phos.CREAM);
-        Phos.text(g, font, "§8the same feed, the same moment — we do not sell speed§r",
-                x + 8, y + 30, Phos.FAINT);
-        y += 50;
-
         boolean gold = !GoldFields.shaping();
+
         Phos.text(g, font, gold
                 ? "§7your plan: §6Gold §8· free during early access§r"
                 : "§7your plan: §8Free§r", x, y, Phos.ACCENT);
         y += 11;
         Phos.text(g, font, "§8" + GoldFields.FOUNDER_LINE + "§r", x, y, Phos.FAINT);
-        y += 16;
+        y += 17;
 
-        int col = w / 2 - 6;
-        Phos.label(g, font, "free, always", x, y);
-        Phos.label(g, font, "gold", x + col + 12, y);
-        y += 12;
+        int cFree = Math.max(210, w - 150);
+        int cGold = cFree + 70;
+        Phos.label(g, font, "", x, y);
+        Phos.label(g, font, "free", x + cFree, y);
+        Phos.label(g, font, "gold", x + cGold, y);
+        y += 11;
         Phos.hline(g, x, y - 2, w);
 
-        String[] free = {
-            "the whole BIN flip board, uncapped",
-            "hover estimate + confidence + comps",
-            "manipulation risk + falling-knife flags",
-            "expected hold time",
-            "net profit, margin and score",
-            "filters, presets and share codes",
-            "P&L dashboard on the site",
+        // {label, free cell, gold cell}. "·" means not included — a dash
+        // reads as "unknown", and this table has no unknowns in it.
+        String[][] rows = {
+            {"flip speed", "§a0s", "§a0s"},
+            {"BIN flip board", "§auncapped", "§auncapped"},
+            {"estimate · confidence · comps", "§a✓", "§a✓"},
+            {"manipulation + falling-knife risk", "§a✓", "§a✓"},
+            {"expected hold time", "§a✓", "§a✓"},
+            {"net profit · margin · score", "§a✓", "§a✓"},
+            {"filters, presets, share codes", "§a✓", "§a✓"},
+            {"price bands + the comps behind them", "§8·", "§6✓"},
+            {"recommended exits (fast / patient)", "§8·", "§6✓"},
+            {"sell side: undercut · depth · reprice", "§8·", "§6✓"},
+            {"slow-case tail + sell-through", "§8·", "§6✓"},
+            {"per-modifier value breakdown", "§8·", "§6✓"},
+            {"craft EV · bazaar spreads · NPC", "§8·", "§6✓"},
+            {"auction bid flips", "§8·", "§6✓"},
         };
-        String[] paid = {
-            "price bands and the comps behind them",
-            "recommended exits, fast and patient",
-            "sell side: undercut, depth, reprice",
-            "slow-case tail and sell-through",
-            "per-modifier value breakdown",
-            "craft/forge EV, bazaar spreads, NPC",
-            "auction bid flips",
-        };
-        for (int i = 0; i < Math.max(free.length, paid.length); i++) {
-            if (i < free.length) {
-                Phos.text(g, font, "§a+ §7" + free[i] + "§r", x, y, Phos.DIM);
-            }
-            if (i < paid.length) {
-                Phos.text(g, font, "§6+ §7" + paid[i] + "§r", x + col + 12, y, Phos.DIM);
-            }
+        for (String[] r : rows) {
+            Phos.text(g, font, "§7" + r[0] + "§r", x, y, Phos.DIM);
+            Phos.text(g, font, r[1] + "§r", x + cFree, y, Phos.CREAM);
+            Phos.text(g, font, r[2] + "§r", x + cGold, y, Phos.CREAM);
             y += 11;
         }
-        y += 6;
-        Phos.text(g, font, "§8Free is the verdict. Gold is the workings behind it.§r", x, y, Phos.FAINT);
+        y += 5;
+        Phos.text(g, font, "§8Free is the verdict. Gold is the workings behind it. "
+                + "The feed is the same feed, at the same moment, for everyone.§r",
+                x, y, Phos.FAINT);
     }
 
     private void about(GuiGraphicsExtractor g, int x, int w) {

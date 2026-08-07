@@ -29,7 +29,7 @@ import java.util.Map;
  * ActionController call site.
  */
 public final class MidasflipShellScreen extends PhosScreen {
-    public enum Tab { DASHBOARD, FLIPS, AUCTIONS, TRADES, VALUE, FILTERS, ALERTS, DISPLAY, THEME, SAFETY, ABOUT }
+    public enum Tab { DASHBOARD, FLIPS, AUCTIONS, TRADES, VALUE, PLAN, FILTERS, ALERTS, DISPLAY, THEME, SAFETY, ABOUT }
 
     private static final int SIDEBAR_W = 92;
     private static final long[] PROFIT_STEPS =
@@ -158,6 +158,7 @@ public final class MidasflipShellScreen extends PhosScreen {
             case DISPLAY -> display(g, x, w, mx, my);
             case THEME -> theme(g, x, w, mx, my);
             case SAFETY -> safety(g, x, w, mx, my);
+            case PLAN -> plan(g, x, w);
             case ABOUT -> about(g, x, w);
         }
 
@@ -214,6 +215,7 @@ public final class MidasflipShellScreen extends PhosScreen {
             case DISPLAY -> "Display";
             case THEME -> "Theme";
             case SAFETY -> "Safety";
+            case PLAN -> "Plan";
             case ABOUT -> "About";
         };
     }
@@ -1251,15 +1253,6 @@ public final class MidasflipShellScreen extends PhosScreen {
         Phos.label(g, font, "discord alerts", x + 8, y + 6);
         Phos.text(g, font, "§7server-side: flips ≥ 1M est net post to your webhook§r", x + 8, y + 17, Phos.DIM);
         Phos.text(g, font, "§8tune via MIDASFLIP_ALERT_MIN_PROFIT on the server§r", x + 8, y + 28, Phos.FAINT);
-        y += 48;
-        // NOT under the badge: quick-open has not shipped, and the frozen-pool
-        // rule in GoldFields says a post-launch feature never joins the
-        // early-access set. Badging an unbuilt feature as free-right-now would
-        // have broken that rule on the same day it was written.
-        Phos.panel(g, x, y, w, 28);
-        Phos.label(g, font, "quick-open", x + 8, y + 6);
-        Phos.text(g, font, "§8" + GoldFields.locked("arrives next update")
-                + " §8· mouse-bindable one-press open§r", x + 8, y + 17, Phos.FAINT);
     }
 
     /** "What's shown": client display filters over every field the server
@@ -1503,6 +1496,75 @@ public final class MidasflipShellScreen extends PhosScreen {
         Phos.text(g, font, "§7audit log: every action recorded in config/midasflip-audit.log§r", x, y, Phos.DIM);
         y += 14;
         Phos.text(g, font, "§8midasflip is lower-risk by architecture, never \"guaranteed safe\"§r", x, y, Phos.FAINT);
+    }
+
+    /** What Free gets, what Gold gets, and which one you are on.
+     *
+     *  <p>Leads with speed because that is the question people actually have
+     *  and the answer is the whole positioning: the flip feed is the SAME
+     *  feed at the SAME moment for everyone. Coflnet sells latency tiers —
+     *  paying users get flips first. We decided never to (locked, pricing
+     *  2026-07-14: "no latency/speed tiers ever"), so a delay column that
+     *  reads 0s / 0s is not filler, it is the differentiator stated as a
+     *  fact the user can check against their own board.
+     *
+     *  <p>The lists are honest in both directions. Free is not a teaser tier
+     *  and Gold is not the product — Free is the whole verdict, Gold is the
+     *  workings behind it. */
+    private void plan(GuiGraphicsExtractor g, int x, int w) {
+        int y = 32;
+
+        // Speed first, both columns, deliberately identical.
+        Phos.panel(g, x, y, w, 42);
+        Phos.label(g, font, "flip speed", x + 8, y + 6);
+        Phos.text(g, font, "§7free §a0s delay§8  ·  §7Gold §a0s delay§r", x + 8, y + 18, Phos.CREAM);
+        Phos.text(g, font, "§8the same feed, the same moment — we do not sell speed§r",
+                x + 8, y + 30, Phos.FAINT);
+        y += 50;
+
+        boolean gold = !GoldFields.shaping();
+        Phos.text(g, font, gold
+                ? "§7your plan: §6Gold §8· free during early access§r"
+                : "§7your plan: §8Free§r", x, y, Phos.ACCENT);
+        y += 11;
+        Phos.text(g, font, "§8" + GoldFields.FOUNDER_LINE + "§r", x, y, Phos.FAINT);
+        y += 16;
+
+        int col = w / 2 - 6;
+        Phos.label(g, font, "free, always", x, y);
+        Phos.label(g, font, "gold", x + col + 12, y);
+        y += 12;
+        Phos.hline(g, x, y - 2, w);
+
+        String[] free = {
+            "the whole BIN flip board, uncapped",
+            "hover estimate + confidence + comps",
+            "manipulation risk + falling-knife flags",
+            "expected hold time",
+            "net profit, margin and score",
+            "filters, presets and share codes",
+            "P&L dashboard on the site",
+        };
+        String[] paid = {
+            "price bands and the comps behind them",
+            "recommended exits, fast and patient",
+            "sell side: undercut, depth, reprice",
+            "slow-case tail and sell-through",
+            "per-modifier value breakdown",
+            "craft/forge EV, bazaar spreads, NPC",
+            "auction bid flips",
+        };
+        for (int i = 0; i < Math.max(free.length, paid.length); i++) {
+            if (i < free.length) {
+                Phos.text(g, font, "§a+ §7" + free[i] + "§r", x, y, Phos.DIM);
+            }
+            if (i < paid.length) {
+                Phos.text(g, font, "§6+ §7" + paid[i] + "§r", x + col + 12, y, Phos.DIM);
+            }
+            y += 11;
+        }
+        y += 6;
+        Phos.text(g, font, "§8Free is the verdict. Gold is the workings behind it.§r", x, y, Phos.FAINT);
     }
 
     private void about(GuiGraphicsExtractor g, int x, int w) {

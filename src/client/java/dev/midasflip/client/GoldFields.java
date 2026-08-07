@@ -76,7 +76,7 @@ final class GoldFields {
      *  copy (owner 2026-08-06). Deliberately not on every inline field label:
      *  a price on every line of a tooltip is nagging, and the offer only
      *  means something where there is room to explain it. */
-    static final String FOUNDER_LINE =
+    public static final String FOUNDER_LINE =
             "€40 Founder locks Gold for life — waitlist at " + MidasflipConfig.SITE_HOST;
 
     /** Has the server started shaping payloads by tier?

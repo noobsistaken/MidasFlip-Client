@@ -77,7 +77,7 @@ final class GoldFields {
      *  a price on every line of a tooltip is nagging, and the offer only
      *  means something where there is room to explain it. */
     public static final String FOUNDER_LINE =
-            "€40 Founder locks Gold for life — waitlist at " + MidasflipConfig.SITE_HOST;
+            "€40 Founder locks Gold for life · waitlist at " + MidasflipConfig.SITE_HOST;
 
     /** Has the server started shaping payloads by tier?
      *

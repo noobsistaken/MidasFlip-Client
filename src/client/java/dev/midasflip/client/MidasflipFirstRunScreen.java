@@ -168,7 +168,22 @@ public final class MidasflipFirstRunScreen extends Screen {
         expiresAtMs = 0;
         ackDeadlineMs = 0;
         requestInflight = true;
-        api.request("POST", "/pair/start?v=2", el -> {
+        // Offer the in-game identity alongside the code so pairing and
+        // linking are one step. Without the link the sell-side endpoints
+        // 403 (main.py _own_player_uuid) and ListingsWatch swallows it, so
+        // a user who skips the website form just gets undercut alerts that
+        // never arrive. Headers, not the query string: a uuid in a URL ends
+        // up in access logs and referrers.
+        java.util.Map<String, String> ident = new java.util.HashMap<>();
+        var mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc.player != null) {
+            ident.put("X-SkyFlip-MC-Uuid", mc.player.getUUID().toString().replace("-", ""));
+            // getUser() is the authenticated Mojang session, not the
+            // display name — a nick or a team prefix must not become the
+            // name we match auction sellers on.
+            ident.put("X-SkyFlip-MC-Ign", mc.getUser().getName());
+        }
+        api.request("POST", "/pair/start?v=2", ident, el -> {
             requestInflight = false;
             if (gone) {
                 return;

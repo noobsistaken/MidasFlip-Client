@@ -8,6 +8,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -137,8 +138,11 @@ class ModContribLinesTest {
                 {"mod_contributions": [
                     {"feature": "ult:wise_5", "learned_delta": 2800000.0, "learned": true},
                     {"feature": "shiny",      "learned_delta": 0.0,       "learned": false}]}"""), 1);
-        assertEquals(1, out.size());
+        // One priced row, plus the one-line hint that something is hidden.
+        // What matters is that "shiny" never renders AS A NUMBER.
         assertTrue(out.get(0).contains("Ult. Wise 5"), out.get(0));
+        assertFalse(String.join("", out).matches(".*[Ss]hiny[^\\n]*[+-]\\d.*"),
+                "an unlearned atom must never carry a figure: " + out);
     }
 
     @Test
@@ -170,7 +174,9 @@ class ModContribLinesTest {
                     {"learned_delta": 5000.0},
                     "not an object",
                     null]}"""), 1);
-        assertEquals(1, out.size());
+        // A row missing its `learned` flag is MALFORMED, not "unpriced", so it
+        // must not produce a hint either: exactly one line, the good row.
+        assertEquals(1, out.size(), out.toString());
         assertTrue(out.get(0).contains("Ult. Wise 5"), out.get(0));
     }
 
@@ -262,7 +268,13 @@ class ModContribLinesTest {
                     {"feature": "ench6:3-5",  "learned_delta": 0.0,       "learned": true},
                     {"feature": "shiny",      "learned_delta": 0.0,       "learned": false}]}""");
         assertEquals(3200000.0, ItemTooltip.modContribSum(r));
-        assertEquals(2, ItemTooltip.modContribLines(r, 1).size());
+        // Two priced rows; the unlearned "shiny" adds the hint line, never a
+        // row, and never enters the total.
+        var lines = ItemTooltip.modContribLines(r, 1);
+        assertEquals(2, lines.stream()
+                        .filter(l -> !l.contains("more"))          // not the hint line
+                        .filter(l -> l.matches(".*[+-]\\d.*")).count(),
+                "exactly the two priced rows carry a figure: " + lines);
     }
 
     @Test
@@ -282,5 +294,72 @@ class ModContribLinesTest {
         JsonObject shaped = resp("{\"gold_locked\": [\"mod_contributions\"]}");
         assertTrue(GoldFields.isLocked(shaped, "mod_contributions"),
                 "the server said it withheld this → locked()");
+    }
+
+    // ---- shift has to DO something on a real item -------------------------
+    // Measured live 2026-08-08: a fully modded Hyperion itemized 5 atoms and
+    // only 3 carried a learned delta. 3 is under the 4-row cap, so nothing
+    // was ever hidden, the "+N more" hint never rendered, and holding shift
+    // changed nothing on screen. The owner tried it and correctly reported
+    // that the feature did nothing. That exact payload is pinned here.
+
+    private static final String LIVE_HYPERION = """
+            {"mod_contributions": [
+                {"feature": "ult:wise_5",              "learned_delta": 0.0,       "learned": false},
+                {"feature": "ench6:3-5",               "learned_delta": 990000.0,  "learned": true},
+                {"feature": "hpb:10",                  "learned_delta": 400000.0,  "learned": true},
+                {"feature": "gem:PERFECT_JASPERx2",    "learned_delta": 0.0,       "learned": false},
+                {"feature": "drill_parts",             "learned_delta": 6320001.0, "learned": true}]}""";
+
+    @Test
+    void theLivePayloadGivesShiftSomethingToReveal() {
+        JsonObject r = resp(LIVE_HYPERION);
+        List<String> collapsed = ItemTooltip.modContribLines(r, 1, false);
+        List<String> expanded = ItemTooltip.modContribLines(r, 1, true);
+
+        assertNotEquals(collapsed, expanded,
+                "holding shift must change the tooltip on the real production payload");
+        assertTrue(expanded.size() > collapsed.size(), expanded.toString());
+    }
+
+    @Test
+    void recognisedButUnpricedAtomsAreNamedNotHidden() {
+        List<String> expanded = ItemTooltip.modContribLines(resp(LIVE_HYPERION), 1, true);
+        String all = String.join("\n", expanded);
+
+        assertTrue(all.contains("Ult. Wise 5"), all);
+        assertTrue(all.contains("Perfect jasper x2"), all);
+        assertTrue(all.contains("no value learned yet"), all);
+    }
+
+    @Test
+    void anUnpricedAtomNeverShowsANumber() {
+        // The server sends 0.0 for these. Rendering it would state we measured
+        // the modifier to be worth nothing, which we did not.
+        for (String line : ItemTooltip.modContribLines(resp(LIVE_HYPERION), 1, true)) {
+            if (line.contains("no value learned yet")) {
+                assertFalse(line.contains("+0"), line);
+                assertFalse(line.contains("-0"), line);
+                assertFalse(line.matches(".*[+-]\\d.*"), "no figure belongs on an unpriced atom: " + line);
+            }
+        }
+    }
+
+    @Test
+    void theCollapsedLineSaysHowManyAreWaiting() {
+        List<String> collapsed = ItemTooltip.modContribLines(resp(LIVE_HYPERION), 1, false);
+        String last = collapsed.get(collapsed.size() - 1);
+        assertTrue(last.contains("+2 more"), last);
+        assertTrue(last.contains("SHIFT"), last);
+    }
+
+    @Test
+    void nothingUnpricedMeansNoExtraLine() {
+        JsonObject allLearned = resp("""
+                {"mod_contributions": [
+                    {"feature": "hpb:10", "learned_delta": 400000.0, "learned": true}]}""");
+        List<String> out = ItemTooltip.modContribLines(allLearned, 1, false);
+        assertEquals(1, out.size(), out.toString());
+        assertFalse(String.join("", out).contains("SHIFT"));
     }
 }

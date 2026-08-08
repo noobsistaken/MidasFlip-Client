@@ -697,6 +697,42 @@ public final class ItemTooltip {
         return modContribs(resp, false);
     }
 
+    /** Atoms the server RECOGNISED on this item but has no learned value for
+     *  (learned:false). Measured live 2026-08-08 on a fully modded Hyperion:
+     *  the server itemized 5 atoms and only 3 carried a delta, so these are
+     *  the common case, not an edge.
+     *
+     *  <p>They are hidden by default because a number is what the collapsed
+     *  line is for and these have none. But hiding them entirely means a
+     *  player cannot tell whether the model even SAW their ultimate enchant,
+     *  which is worse than saying "seen, not priced yet" — and saying that is
+     *  the only honest option, since printing their 0.0 as a market fact
+     *  would claim we measured a modifier to be worthless. */
+    static java.util.List<String> unlearnedAtoms(JsonObject resp) {
+        var out = new java.util.ArrayList<String>();
+        JsonElement raw = resp == null ? null : resp.get("mod_contributions");
+        if (raw == null || !raw.isJsonArray()) {
+            return out;
+        }
+        for (JsonElement e : raw.getAsJsonArray()) {
+            if (!e.isJsonObject()) {
+                continue;
+            }
+            JsonObject o = e.getAsJsonObject();
+            String feature = GoldFields.optStr(o, "feature");
+            // Require an EXPLICIT learned:false. A row that simply omits the
+            // flag is malformed, not "recognised but unpriced", and counting
+            // it here would put a server bug in front of the user as if it
+            // were a fact about their item.
+            boolean saysUnlearned = o.has("learned") && o.get("learned").isJsonPrimitive()
+                    && !o.get("learned").getAsBoolean();
+            if (feature != null && saysUnlearned) {
+                out.add(feature);
+            }
+        }
+        return out;
+    }
+
     /** Sum of the itemized deltas, for the "incl. modifiers +X" marker.
      *  Null when the server sent nothing usable — including when it sent a
      *  row we could not read, because this number appears next to a price and
@@ -747,8 +783,27 @@ public final class ItemTooltip {
             String sign = coins >= 0 ? "+" : "-";
             out.add("§8  " + prettyAtom(r.getKey()) + " §7" + sign + coins(Math.abs(coins)) + "§r");
         }
-        if (rows.size() > shown) {
-            out.add("§8  +" + (rows.size() - shown) + " more · hold SHIFT to see all§r");
+        int hiddenRows = rows.size() - shown;
+        // Shift also surfaces the atoms we RECOGNISED but cannot price. In
+        // production these outnumber the priced ones often enough that
+        // without them shift does nothing at all on a typical item: measured
+        // 2026-08-08, a fully modded Hyperion itemized 5 atoms of which 3
+        // carried a delta, i.e. fewer than the 4-row cap, so the "+N more"
+        // hint never appeared and holding shift changed nothing on screen
+        // (owner report, same day). No number is printed for these, ever: the
+        // server sends 0.0 for them and rendering that would state we
+        // measured the modifier to be worth nothing.
+        var unlearned = unlearnedAtoms(resp);
+        if (expanded) {
+            for (String feature : unlearned) {
+                out.add("§8  " + prettyAtom(feature) + " §8· no value learned yet§r");
+            }
+        } else if (hiddenRows + unlearned.size() > 0) {
+            // ONE hint line, never two. Priced rows over the cap and
+            // recognised-but-unpriced atoms both hide behind the same key, so
+            // they are counted together; two separate "hold SHIFT" lines
+            // would cost two rows of a tooltip to say one thing.
+            out.add("§8  +" + (hiddenRows + unlearned.size()) + " more · hold SHIFT§r");
         }
         return out;
     }

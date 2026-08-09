@@ -60,7 +60,8 @@ public final class MidasflipConfig {
     public static final String DEFAULT_API_BASE = "https://midasflip.com";
     public static final String SITE_HOST = "midasflip.com";
 
-    /** Default = the live production API (skyflip.xyz went live 2026-07);
+    /** Default = the live production API (midasflip.com; the service ran on
+     *  skyflip.xyz before the 2026-07-19 rename);
      *  existing saved configs keep their own value — only the default for
      *  fresh installs changed from the dev localhost:8000. */
     public String apiBase = DEFAULT_API_BASE;

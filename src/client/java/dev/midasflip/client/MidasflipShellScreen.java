@@ -138,7 +138,10 @@ public final class MidasflipShellScreen extends PhosScreen {
         Phos.text(g, font, title(tab), x, 14, Phos.CREAM);
         String status;
         if (api.likelyDown()) {
-            status = "§c● offline · start tunnel§r";
+            // Public wording, same reason as loadingOrDown below: "start
+            // tunnel" was a dev instruction that means nothing to a user and
+            // reads like the mod is broken. Missed by the 2026-07 sweep.
+            status = "§c● offline§r";
         } else if (feed.isConnected()) {
             status = "§a● live§r" + (api.lastLatencyMs() >= 0 ? "  §8" + api.lastLatencyMs() + "ms§r" : "");
         } else {
@@ -1760,7 +1763,8 @@ public final class MidasflipShellScreen extends PhosScreen {
     }
 
     /** Honest placeholder: "loading…" only while we might still succeed;
-     *  a clear tunnel hint once the API is definitively unreachable. */
+     *  a clear, public "cannot reach us" line once the API is definitively
+     *  unreachable. */
     private void loadingOrDown(GuiGraphicsExtractor g, int x, int y, String what) {
         if (api.likelyDown()) {
             Phos.text(g, font, "§ccan't reach MidasFlip.§r", x, y, Phos.RED);

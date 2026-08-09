@@ -422,7 +422,7 @@ public final class SellOverlay {
             return;
         }
         if (el == null || !el.isJsonObject()) {
-            Phos.text(g, font, api.likelyDown() ? "§coffline · start tunnel§r" : "§8pricing…§r",
+            Phos.text(g, font, api.likelyDown() ? "§coffline§r" : "§8pricing…§r",
                     cx, cy, Phos.FAINT);
             return;
         }

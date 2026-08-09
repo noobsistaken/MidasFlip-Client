@@ -31,7 +31,7 @@ public final class MidasflipClient implements ClientModInitializer {
      *  labeling; the keybind itself stays the only bridge to action. */
     static KeyMapping openBest;
     private KeyMapping toggleOverlay;
-    private KeyMapping openMenu;
+    static KeyMapping openMenu;
 
     @Override
     public void onInitializeClient() {
@@ -94,6 +94,13 @@ public final class MidasflipClient implements ClientModInitializer {
         }
 
         while (openMenu.consumeClick()) {
+            // Retire the HUD's first-run hint the moment they act on it,
+            // whichever screen the keypress lands on. Saved immediately so a
+            // crash before the next config write cannot resurrect it.
+            if (!config.seenShell) {
+                config.seenShell = true;
+                config.save();
+            }
             // First run (design 3c): unpaired client goes to setup first.
             if (config.apiToken.isEmpty()) {
                 mc.setScreen(new MidasflipFirstRunScreen(null, config, api, feed));

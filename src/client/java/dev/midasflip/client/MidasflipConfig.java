@@ -128,6 +128,13 @@ public final class MidasflipConfig {
     // in it were a credential leak waiting to happen.
     public transient String apiToken = "";
     public SafetyMode safetyMode = SafetyMode.STRICT; // safe default
+    /** Cleared the first time the shell is opened. Until then the HUD
+     *  carries a one-line "press <key> to open MidasFlip" hint: a fresh
+     *  install otherwise shows a board and no indication that there is a
+     *  whole mod behind a keybind nobody mentioned (owner, first-run test
+     *  2026-08-09). Persisted so it does not reappear every launch. */
+    public boolean seenShell = false;
+
     public boolean overlayEnabled = true;
     public int overlayMaxRows = 5;
     public double minScore = 0.0;

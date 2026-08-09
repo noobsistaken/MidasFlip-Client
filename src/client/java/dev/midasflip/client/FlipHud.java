@@ -71,6 +71,18 @@ public final class FlipHud {
             long retry = feed.secondsUntilRetry();
             header = "§6[MidasFlip]§r §creconnecting" + (retry > 0 ? " in " + retry + "s" : "…") + "§r";
         }
+        // FIRST-RUN HINT, above everything else and only until the shell has
+        // been opened once. A fresh install otherwise renders a board with no
+        // indication that a whole mod sits behind a keybind nobody mentioned
+        // (owner, first-run test 2026-08-09). Names the key it is ACTUALLY
+        // bound to rather than hardcoding J, so a rebind cannot make this line
+        // a lie.
+        if (!config.seenShell) {
+            Phos.textShadow(gfx, mc.font, "§6press "
+                    + MidasflipClient.openMenu.getTranslatedKeyMessage().getString()
+                    + " to open MidasFlip§r", x, y, 0xFFFFFFFF);
+            y += line;
+        }
         Phos.textShadow(gfx, mc.font, header, x, y, 0xFFFFFFFF);
         y += line;
 

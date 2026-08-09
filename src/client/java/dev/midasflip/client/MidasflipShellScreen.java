@@ -247,9 +247,9 @@ public final class MidasflipShellScreen extends PhosScreen {
         JsonElement bt = api.get("/backtest/default", 10 * 60_000);
         if (bt != null && bt.isJsonObject()) {
             JsonObject b = bt.getAsJsonObject();
-            Phos.text(g, font, "§7" + b.get("signals").getAsInt() + " signals · fill-adj §a+"
-                    + Phos.coins(b.get("est_profit_fill_adjusted").getAsDouble())
-                    + "§r §8· " + b.get("signals_sniped_by_market").getAsInt()
+            Phos.text(g, font, "§7" + intOf(b, "signals") + " signals · fill-adj §a+"
+                    + coinsOf(b, "est_profit_fill_adjusted")
+                    + "§r §8· " + intOf(b, "signals_sniped_by_market")
                     + " market-validated§r", x, y, Phos.DIM);
         } else {
             loadingOrDown(g, x, y, "backtest");
@@ -434,7 +434,10 @@ public final class MidasflipShellScreen extends PhosScreen {
         }
         JsonObject d = el.getAsJsonObject();
         JsonArray sales = GoldFields.optArr(d, "recent_sales");
-        JsonObject est = d.getAsJsonObject("estimate");
+        // optObj: getAsJsonObject() returns null for an absent key and
+        // throws for an explicit JSON null. Every read of `est` below
+        // tolerates null.
+        JsonObject est = GoldFields.optObj(d, "estimate");
         if (sales == null) {
             Phos.text(g, font, GoldFields.locked("comps"), x, y + 2, Phos.FAINT);
         } else {
@@ -445,11 +448,11 @@ public final class MidasflipShellScreen extends PhosScreen {
         long now = System.currentTimeMillis();
         if (sales != null) {
             for (JsonElement se : sales) {
-                JsonObject s = se.getAsJsonObject();
-                String iso = s.get("ended_at").getAsString();
-                long ageMin = Math.max(0, (now - Instant.parse(iso.contains("+") || iso.endsWith("Z") ? iso : iso + "Z").toEpochMilli()) / 60_000);
-                Phos.text(g, font, Phos.coins(s.get("unit_price").getAsLong())
-                        + " §8· " + (ageMin >= 60 ? (ageMin / 60) + "h" + ageMin % 60 + "m" : ageMin + "m") + " · exact§r", x, yy, Phos.DIM);
+                String line = saleLine(se, now);
+                if (line == null) {
+                    continue;   // a row we cannot read is not a comp we can show
+                }
+                Phos.text(g, font, line, x, yy, Phos.DIM);
                 yy += 10;
                 if (++shown >= config.compsPeekSales) {
                     break;
@@ -459,17 +462,7 @@ public final class MidasflipShellScreen extends PhosScreen {
         // Show-your-work: source (direct comps vs a derived sibling) and how
         // many sales the MAD gate rejected as outliers — the "which-filtered"
         // half of the valuation drill-down.
-        String src = est.has("src") ? est.get("src").getAsString() : "comps";
-        String srcShort = src.startsWith("derived") ? "derived" : src;
-        int rej = est.has("outliers") ? est.get("outliers").getAsInt() : 0;
-        Double pess = GoldFields.optNum(est, "pess");
-        String estExit = pess == null
-                ? GoldFields.locked("EST EXIT")
-                : "§aEST EXIT " + Phos.coins(pess) + "§r";
-        Phos.text(g, font, estExit + " §8· conf " + String.format("%.2f", est.get("conf").getAsDouble())
-                + " · " + est.get("comps").getAsInt() + " comps"
-                + (rej > 0 ? " · " + rej + " rejected" : "")
-                + " · " + srcShort + "§r", x, yy + 2, Phos.GREEN);
+        Phos.text(g, font, estExitLine(est), x, yy + 2, Phos.GREEN);
         if (f.exitFast != null) {
             // Signed net deltas ride each exit line (P2-final: a PATIENT
             // flip's fast line is an explicit loss, never hidden). Same
@@ -525,6 +518,88 @@ public final class MidasflipShellScreen extends PhosScreen {
         }
     }
 
+    /** One recent-sale row of the comps peek, or null when the row cannot
+     *  be read. Price and timestamp were read unguarded: an absent key NPEs
+     *  and an explicit JSON null throws, either of which crashes the game
+     *  from a screen render. An unreadable comp is dropped rather than
+     *  shown with a guessed age, because the age is the whole point of the
+     *  line. Production sends both fields on every sale (measured
+     *  2026-08-09), so no real comp disappears. */
+    static String saleLine(JsonElement se, long now) {
+        if (se == null || !se.isJsonObject()) {
+            return null;
+        }
+        JsonObject s = se.getAsJsonObject();
+        String iso = GoldFields.optStr(s, "ended_at");
+        Double unitPrice = GoldFields.optNum(s, "unit_price");
+        if (iso == null || unitPrice == null) {
+            return null;
+        }
+        long endedMs;
+        try {
+            endedMs = Instant.parse(iso.contains("+") || iso.endsWith("Z") ? iso : iso + "Z")
+                    .toEpochMilli();
+        } catch (RuntimeException e) {
+            // Same posture as ListingsWatch.endedMs: an unparsable
+            // timestamp is data we cannot use, not a reason to crash.
+            return null;
+        }
+        long ageMin = Math.max(0, (now - endedMs) / 60_000);
+        return Phos.coins(unitPrice.longValue()) + " §8· "
+                + (ageMin >= 60 ? (ageMin / 60) + "h" + ageMin % 60 + "m" : ageMin + "m")
+                + " · exact§r";
+    }
+
+    /** The comps peek's headline: the exit band, then the evidence behind
+     *  it (confidence, comp count, rejected outliers, which ladder rung).
+     *
+     *  <p>conf and comps were read unguarded and are FREE fields, so a
+     *  missing one renders "not available" and never a lock — a paywall
+     *  over a field nobody is gating would be a lie at a free launch. pess
+     *  keeps its existing lock, which is a real Gold field. src and
+     *  outliers keep their existing "comps"/0 defaults. */
+    static String estExitLine(JsonObject est) {
+        String src = GoldFields.optStr(est, "src");
+        String srcShort = src == null ? "comps" : src.startsWith("derived") ? "derived" : src;
+        Double outliers = GoldFields.optNum(est, "outliers");
+        int rej = outliers == null ? 0 : outliers.intValue();
+        Double pess = GoldFields.optNum(est, "pess");
+        Double conf = GoldFields.optNum(est, "conf");
+        Double comps = GoldFields.optNum(est, "comps");
+        String estExit = pess == null
+                ? GoldFields.locked("EST EXIT")
+                : "§aEST EXIT " + Phos.coins(pess) + "§r";
+        String evidence = conf == null || comps == null
+                ? " · " + GoldFields.unknown("conf")
+                : " §8· conf " + String.format("%.2f", conf) + " · " + comps.intValue() + " comps";
+        return estExit + evidence
+                + (rej > 0 ? " · " + rej + " rejected" : "")
+                + " · " + srcShort + "§r";
+    }
+
+    /** The expanded auctions row's evidence line: exit band, confidence,
+     *  comp count and measured velocity.
+     *
+     *  <p>Split out so it is testable, and read through the null-tolerant
+     *  accessors. conf, comps and sales_per_day were guarded by has(), which
+     *  is TRUE for an explicit JSON null — the getAsDouble that followed
+     *  then threw UnsupportedOperationException from a screen render, which
+     *  has no try/catch above it (crash 2026-08-06). Their 0 default is
+     *  unchanged for an absent key, so every /auctions/bids row the live API
+     *  serves today renders exactly as before (measured 2026-08-09: the
+     *  server omits fields, it never nulls them).
+     *
+     *  <p>est_pess keeps its existing lock: it is a real Gold field and the
+     *  server genuinely withholds it once shaping is lit. */
+    static String bidDetailLine(JsonObject r) {
+        Double estPess = GoldFields.optNum(r, "est_pess");
+        return (estPess == null
+                ? GoldFields.locked("est exit") : "§7est exit " + Phos.coins(estPess))
+                + " §8· conf " + String.format(Locale.ROOT, "%.2f", numOf(r, "conf"))
+                + " · " + (int) numOf(r, "comps") + " comps · "
+                + String.format(Locale.ROOT, "%.0f/d", numOf(r, "sales_per_day")) + "§r";
+    }
+
     /** Auctions tab: bid-flip candidates from /auctions/bids (server
      *  refreshes per 60s snapshot, so a 60s TTL). Server order is
      *  net_at_next desc — preserved; the only client re-shaping is the
@@ -573,10 +648,13 @@ public final class MidasflipShellScreen extends PhosScreen {
         int shown = 0;
         boolean any = false;
         for (JsonElement e : (JsonArray) el) {
+            if (!e.isJsonObject()) {
+                continue;
+            }
             JsonObject r = e.getAsJsonObject();
             any = true;
-            double marginNext = r.has("margin_at_next") ? r.get("margin_at_next").getAsDouble() : 0;
-            long endMs = r.has("end_ms") ? r.get("end_ms").getAsLong() : 0;
+            double marginNext = numOf(r, "margin_at_next");
+            long endMs = (long) numOf(r, "end_ms");
             long leftMin = Math.max(0, (endMs - now) / 60_000);
             // Client display filters (hide only — never surfaces anything
             // the server didn't send): min margin, max end-time.
@@ -591,11 +669,10 @@ public final class MidasflipShellScreen extends PhosScreen {
             }
             shown++;
 
-            String uuid = r.has("uuid") ? r.get("uuid").getAsString() : null;
-            String itemId = r.has("item_id") ? r.get("item_id").getAsString() : null;
-            String compKey = r.has("comp_key") && !r.get("comp_key").isJsonNull()
-                    ? r.get("comp_key").getAsString() : null;
-            boolean hasBids = r.has("has_bids") && r.get("has_bids").getAsBoolean();
+            String uuid = GoldFields.optStr(r, "uuid");
+            String itemId = GoldFields.optStr(r, "item_id");
+            String compKey = GoldFields.optStr(r, "comp_key");
+            boolean hasBids = flagOf(r, "has_bids");
             boolean exp = uuid != null && uuid.equals(expandedAuctionId);
 
             boolean hov = hovered(x, y, w, 13, mx, my);
@@ -609,12 +686,12 @@ public final class MidasflipShellScreen extends PhosScreen {
             String left = endMs <= 0 ? "?" : leftMin < 5 ? leftMin + "m §c⚠§r" : leftMin + "m";
             Phos.text(g, font, "§7" + left + "§r", x + cols[1], y, Phos.DIM);
             Phos.text(g, font, hasBids
-                    ? Phos.coins(r.get("current_bid").getAsLong())
+                    ? coinsOf(r, "current_bid")
                     : "§8no bids§r", x + cols[2], y, Phos.FAINT);
             // "next" is the number you'd actually enter (cream); "max" is
             // your ceiling (accent).
-            Phos.text(g, font, Phos.coins(r.get("next_bid").getAsLong()), x + cols[3], y, Phos.CREAM);
-            Phos.text(g, font, Phos.coins(r.get("max_bid").getAsLong()), x + cols[4], y, Phos.ACCENT);
+            Phos.text(g, font, coinsOf(r, "next_bid"), x + cols[3], y, Phos.CREAM);
+            Phos.text(g, font, coinsOf(r, "max_bid"), x + cols[4], y, Phos.ACCENT);
             Phos.text(g, font, "+" + Math.round(marginNext * 100) + "%", x + cols[5], y, Phos.GREEN);
 
             final String tid = uuid;
@@ -623,18 +700,10 @@ public final class MidasflipShellScreen extends PhosScreen {
             y += 13;
 
             if (exp) {
-                Double estPess = r.has("est_pess") ? r.get("est_pess").getAsDouble() : null;
-                double conf = r.has("conf") ? r.get("conf").getAsDouble() : 0;
-                int comps = r.has("comps") ? r.get("comps").getAsInt() : 0;
-                double spd = r.has("sales_per_day") ? r.get("sales_per_day").getAsDouble() : 0;
-                double netNext = r.has("net_at_next") ? r.get("net_at_next").getAsDouble() : 0;
-                Phos.text(g, font, "   " + (estPess == null
-                        ? GoldFields.locked("est exit") : "§7est exit " + Phos.coins(estPess))
-                        + " §8· conf " + String.format(Locale.ROOT, "%.2f", conf)
-                        + " · " + comps + " comps · " + String.format(Locale.ROOT, "%.0f/d", spd) + "§r",
-                        x, y, Phos.DIM);
+                Phos.text(g, font, "   " + bidDetailLine(r), x, y, Phos.DIM);
                 y += 11;
-                Phos.text(g, font, "   §anet at next bid +" + Phos.coins(netNext) + "§r", x, y, Phos.GREEN);
+                Phos.text(g, font, "   §anet at next bid +"
+                        + Phos.coins(numOf(r, "net_at_next")) + "§r", x, y, Phos.GREEN);
                 y += 11;
                 // The two honesty lines (staleness + coin-lock).
                 Phos.text(g, font, "   §8data up to ~90s old · verify the current bid in the auction view§r",
@@ -815,6 +884,9 @@ public final class MidasflipShellScreen extends PhosScreen {
         y += 12;
         Phos.hline(g, x, y - 2, w);
         for (JsonElement e : (JsonArray) el) {
+            if (!e.isJsonObject()) {
+                continue;
+            }
             JsonObject r = e.getAsJsonObject();
             if (!craftKindMatches(r)) {
                 continue;
@@ -823,41 +895,66 @@ public final class MidasflipShellScreen extends PhosScreen {
                 break;
             }
             valueRows.add(r);
-            String id = r.get("output_id").getAsString();
+            // The row's identity drives the expand/collapse zone below, so a
+            // row without one cannot be rendered at all rather than rendered
+            // uncollapsible. Absent NPEd and an explicit JSON null threw, on
+            // a render thread with no try/catch above it.
+            String id = GoldFields.optStr(r, "output_id");
+            if (id == null) {
+                continue;
+            }
             boolean exp = id.equals(expandedId);
             boolean hov = hovered(x, y, w, 13, mx, my);
             if (hov) {
                 g.fill(x, y - 1, x + w, y + 12, Phos.PANEL_HI);
             }
             Phos.text(g, font, shorten(NameMap.pretty(id), 26) + (exp ? " ▾" : ""), x + cols[0], y, Phos.CREAM);
-            Phos.text(g, font, r.get("kind").getAsString(), x + cols[1], y, Phos.FAINT);
-            Phos.text(g, font, Phos.coins(r.get("cost").getAsDouble()) + " §8→§r "
-                    + Phos.coins(r.get("proceeds").getAsDouble()), x + cols[2], y, Phos.DIM);
-            Phos.text(g, font, "+" + Phos.coins(r.get("profit").getAsDouble()), x + cols[3], y, Phos.GREEN);
-            JsonElement dur = r.get("duration_s");
-            Phos.text(g, font, dur == null || dur.isJsonNull() ? "instant"
-                    : durStr(dur.getAsLong()), x + cols[4], y, Phos.DIM);
-            JsonElement shr = r.get("profit_per_slot_hour");
-            Phos.text(g, font, shr == null || shr.isJsonNull() ? "·" : Phos.coins(shr.getAsDouble()),
-                    x + cols[5], y, Phos.DIM);
+            Phos.text(g, font, strOf(r, "kind"), x + cols[1], y, Phos.FAINT);
+            Phos.text(g, font, coinsOf(r, "cost") + " §8→§r "
+                    + coinsOf(r, "proceeds"), x + cols[2], y, Phos.DIM);
+            Phos.text(g, font, "+" + coinsOf(r, "profit"), x + cols[3], y, Phos.GREEN);
+            Double dur = GoldFields.optNum(r, "duration_s");
+            Phos.text(g, font, dur == null ? "instant"
+                    : durStr(dur.longValue()), x + cols[4], y, Phos.DIM);
+            Phos.text(g, font, coinsOrDot(r, "profit_per_slot_hour"), x + cols[5], y, Phos.DIM);
             final String tid = id;
             zone(x, y - 1, w, 13, () -> expandedId = tid.equals(expandedId) ? null : tid);
             y += 13;
             if (exp) {
                 // Unlock requirement first ("Requires: Mycelium IX") — the
                 // recipe is worthless to a player who can't craft it yet.
-                if (r.has("req") && !r.get("req").isJsonNull()) {
-                    Phos.text(g, font, "   §8⚠ " + r.get("req").getAsString() + "§r", x, y, Phos.FAINT);
+                String req = GoldFields.optStr(r, "req");
+                if (req != null) {
+                    Phos.text(g, font, "   §8⚠ " + req + "§r", x, y, Phos.FAINT);
                     y += 11;
                 }
-                for (JsonElement ie : r.getAsJsonArray("inputs")) {
+                JsonArray inputs = GoldFields.optArr(r, "inputs");
+                for (JsonElement ie : inputs == null ? new JsonArray() : inputs) {
+                    if (!ie.isJsonObject()) {
+                        continue;
+                    }
                     JsonObject in = ie.getAsJsonObject();
-                    String legName = NameMap.pretty(in.get("id").getAsString());
-                    double need = in.get("count").getAsDouble();
+                    // A leg is a name, a quantity and a market. Without the
+                    // first two there is nothing to render and nothing the
+                    // click could put on the clipboard, so the row is
+                    // skipped; reading them raw NPEd on an absent key and
+                    // threw on an explicit JSON null, from a render thread
+                    // with no try/catch above it. Every live /craft/evs leg
+                    // carries both (measured 2026-08-09), so no real
+                    // ingredient disappears.
+                    String legId = GoldFields.optStr(in, "id");
+                    Double count = GoldFields.optNum(in, "count");
+                    if (legId == null || count == null) {
+                        continue;
+                    }
+                    String legName = NameMap.pretty(legId);
+                    double need = count;
                     // One run. There is no run-count control yet; when one
                     // arrives this is the single place that multiplies.
                     long qty = (long) Math.ceil(need);
-                    String via = in.get("via").getAsString();
+                    // Null via already has a defined meaning here: a leg we
+                    // cannot classify gets no command and only copies.
+                    String via = GoldFields.optStr(in, "via");
                     // Every priced leg has a market and therefore a search
                     // command: craft.py returns "bazaar" or "ah:<key>" and
                     // nothing else. A leg we cannot classify sends nothing.
@@ -879,8 +976,8 @@ public final class MidasflipShellScreen extends PhosScreen {
                     }
                     Phos.text(g, font, "   §8" + shorten(legName, 30)
                             + " ×" + need
-                            + " · " + Phos.coins(in.get("cost").getAsDouble())
-                            + " · " + via + hint + "§r", x, y, Phos.FAINT);
+                            + " · " + coinsOf(in, "cost")
+                            + " · " + (via == null ? "?" : via) + hint + "§r", x, y, Phos.FAINT);
                     zone(x, y - 1, w, 11, () -> {
                         Minecraft mc = Minecraft.getInstance();
                         if (verb != null) {
@@ -914,14 +1011,26 @@ public final class MidasflipShellScreen extends PhosScreen {
         if ("all".equals(kindFilter)) {
             return true;
         }
-        String kind = r.get("kind").getAsString();
+        // Every read here was raw: an absent "kind" NPEd and an explicit JSON
+        // null threw, and this runs once per row on the render thread, which
+        // has no try/catch above it. A row we cannot classify fails the
+        // filter rather than crashing the game — which is what an unmatched
+        // kind already did. The live board sends kind, sell_via and inputs on
+        // every row (measured 2026-08-09), so the filter's verdict is
+        // unchanged for real data.
+        String kind = GoldFields.optStr(r, "kind");
         if ("bz craft".equals(kindFilter)) {
-            if (!"craft".equals(kind) || !r.has("sell_via")
-                    || !"bazaar".equals(r.get("sell_via").getAsString())) {
+            if (!"craft".equals(kind)
+                    || !"bazaar".equals(GoldFields.optStr(r, "sell_via"))) {
                 return false;
             }
-            for (JsonElement ie : r.getAsJsonArray("inputs")) {
-                if (!"bazaar".equals(ie.getAsJsonObject().get("via").getAsString())) {
+            JsonArray inputs = GoldFields.optArr(r, "inputs");
+            if (inputs == null) {
+                return false;
+            }
+            for (JsonElement ie : inputs) {
+                if (!ie.isJsonObject()
+                        || !"bazaar".equals(GoldFields.optStr(ie.getAsJsonObject(), "via"))) {
                     return false;
                 }
             }
@@ -993,19 +1102,21 @@ public final class MidasflipShellScreen extends PhosScreen {
             if (shown++ >= config.shellTableRows) {
                 break;
             }
+            if (!e.isJsonObject()) {
+                continue;
+            }
             JsonObject r = e.getAsJsonObject();
-            Phos.text(g, font, shorten(NameMap.pretty(r.get("product_id").getAsString()), 24),
+            Phos.text(g, font, shorten(NameMap.pretty(GoldFields.optStr(r, "product_id")), 24),
                     x + cols[0], y, Phos.CREAM);
-            Phos.text(g, font, Phos.coins(r.get("buy_at").getAsDouble()) + " §8→§r "
-                    + Phos.coins(r.get("sell_at").getAsDouble()), x + cols[1], y, Phos.DIM);
-            Phos.text(g, font, "+" + Phos.coins(r.get("profit_per_unit").getAsDouble()) + "/u",
+            Phos.text(g, font, coinsOf(r, "buy_at") + " §8→§r "
+                    + coinsOf(r, "sell_at"), x + cols[1], y, Phos.DIM);
+            Phos.text(g, font, "+" + coinsOf(r, "profit_per_unit") + "/u",
                     x + cols[2], y, Phos.GREEN);
-            Phos.text(g, font, Phos.coins(r.get("est_profit_per_hour").getAsDouble())
+            Phos.text(g, font, coinsOf(r, "est_profit_per_hour")
                     + "/h §8@ full fill§r", x + cols[3], y, Phos.DIM);
             // spread_pct arrives as a FRACTION (bazaar.py: profit/place_buy,
             // gate MIN_SPREAD_PCT=0.02) — ×100 like netMarginPct everywhere.
-            Phos.text(g, font, Math.round(r.get("spread_pct").getAsDouble() * 100) + "%",
-                    x + cols[4], y, Phos.FAINT);
+            Phos.text(g, font, pctOf(r, "spread_pct"), x + cols[4], y, Phos.FAINT);
             y += 13;
         }
         if (shown == 0) {
@@ -1036,18 +1147,20 @@ public final class MidasflipShellScreen extends PhosScreen {
             if (shown++ >= config.shellTableRows) {
                 break;
             }
+            if (!e.isJsonObject()) {
+                continue;
+            }
             JsonObject r = e.getAsJsonObject();
-            Phos.text(g, font, shorten(NameMap.pretty(r.get("product_id").getAsString()), 24),
+            Phos.text(g, font, shorten(NameMap.pretty(GoldFields.optStr(r, "product_id")), 24),
                     x + cols[0], y, Phos.CREAM);
-            Phos.text(g, font, Phos.coins(r.get("buy_at").getAsDouble()) + " §8→§r "
-                    + Phos.coins(r.get("npc_sell").getAsDouble()), x + cols[1], y, Phos.DIM);
-            Phos.text(g, font, "+" + Phos.coins(r.get("profit_per_unit").getAsDouble()) + "/u",
+            Phos.text(g, font, coinsOf(r, "buy_at") + " §8→§r "
+                    + coinsOf(r, "npc_sell"), x + cols[1], y, Phos.DIM);
+            Phos.text(g, font, "+" + coinsOf(r, "profit_per_unit") + "/u",
                     x + cols[2], y, Phos.GREEN);
             // margin_pct is a FRACTION (npc.py: profit/instabuy, gate
             // MIN_MARGIN_PCT=0.03) — ×100 for display.
-            Phos.text(g, font, Math.round(r.get("margin_pct").getAsDouble() * 100) + "%",
-                    x + cols[3], y, Phos.DIM);
-            Phos.text(g, font, Phos.coins(r.get("est_profit_per_day").getAsDouble()) + "/d",
+            Phos.text(g, font, pctOf(r, "margin_pct"), x + cols[3], y, Phos.DIM);
+            Phos.text(g, font, coinsOf(r, "est_profit_per_day") + "/d",
                     x + cols[4], y, Phos.DIM);
             y += 13;
         }
@@ -1747,21 +1860,55 @@ public final class MidasflipShellScreen extends PhosScreen {
     }
 
     private String eventChip() {
-        JsonElement el = api.get("/events/upcoming?days=1", 10 * 60_000);
+        return eventChip(api.get("/events/upcoming?days=1", 10 * 60_000),
+                System.currentTimeMillis());
+    }
+
+    /** The header's next-event chip, or "" when there is nothing to say.
+     *
+     *  <p>Split out so it is testable, and read through the null-tolerant
+     *  accessors: name, active and starts were all read raw, so an absent
+     *  key NPEd and an explicit JSON null threw UnsupportedOperationException
+     *  — on the render thread, which has no try/catch above it (crash
+     *  2026-08-06). getAsJsonArray("windows") had the same problem one level
+     *  up: it returns null for an absent key but throws ClassCastException
+     *  for a null one.
+     *
+     *  <p>"" is what an empty windows array already produced, so an
+     *  unreadable window simply means no chip. This is a decorative header
+     *  ornament; there is nothing honest to render from a window we cannot
+     *  read, and the events pane itself is unaffected. The live endpoint
+     *  sends all three fields and omits rather than nulls (measured
+     *  2026-08-09), so the chip is unchanged for real data. */
+    static String eventChip(JsonElement el, long nowMs) {
         if (el == null || !el.isJsonObject()) {
             return "";
         }
-        JsonArray ws = el.getAsJsonObject().getAsJsonArray("windows");
-        if (ws == null || ws.isEmpty()) {
+        JsonArray ws = GoldFields.optArr(el.getAsJsonObject(), "windows");
+        if (ws == null || ws.isEmpty() || !ws.get(0).isJsonObject()) {
             return "";
         }
         JsonObject wnd = ws.get(0).getAsJsonObject();
-        String name = wnd.get("name").getAsString();
-        if (wnd.get("active").getAsBoolean()) {
+        String name = GoldFields.optStr(wnd, "name");
+        if (name == null) {
+            return "";
+        }
+        if (flagOf(wnd, "active")) {
             return "§e◆ " + shorten(name, 22) + " · active§r";
         }
-        long mins = (Instant.parse(wnd.get("starts").getAsString()).toEpochMilli()
-                - System.currentTimeMillis()) / 60_000;
+        String starts = GoldFields.optStr(wnd, "starts");
+        if (starts == null) {
+            return "";
+        }
+        long startMs;
+        try {
+            startMs = Instant.parse(starts).toEpochMilli();
+        } catch (RuntimeException e) {
+            // A timestamp we cannot parse is data we cannot use, not a
+            // reason to take the game down.
+            return "";
+        }
+        long mins = (startMs - nowMs) / 60_000;
         return mins <= 240 ? "§8◇ " + shorten(name, 22) + " in "
                 + (mins >= 60 ? (mins / 60) + "h" + mins % 60 + "m" : mins + "m") + "§r" : "";
     }
@@ -1797,5 +1944,59 @@ public final class MidasflipShellScreen extends PhosScreen {
 
     private static String shorten(String s, int n) {
         return s == null ? "?" : s.length() <= n ? s : s.substring(0, n - 1) + "…";
+    }
+
+    // ---- NULL-TOLERANT BOARD CELLS ---------------------------------------
+    //
+    // Every board below reads its columns out of a server row. Read raw,
+    // `r.get("cost").getAsDouble()` NPEs when the key is absent and throws
+    // UnsupportedOperationException when it is an explicit JSON null — on
+    // the render thread, which has no try/catch above it, so either one is
+    // a full game crash (as happened 2026-08-06). The live API sends every
+    // column on every row of every board and OMITS rather than nulls
+    // (measured 2026-08-09), so these render exactly what they always did;
+    // the "?" only appears for a payload shape the server does not send.
+    //
+    // "?" and not a lock: these are ordinary board columns, not withheld
+    // Gold fields, and a paywall drawn over data nobody is gating would be
+    // a lie during a free launch. The LEFT column of the auctions board has
+    // used "?" for an unknown value since it shipped.
+
+    private static String coinsOf(JsonObject o, String key) {
+        Double v = GoldFields.optNum(o, key);
+        return v == null ? "?" : Phos.coins(v);
+    }
+
+    /** Like {@link #coinsOf}, for a column whose "we have no number" state
+     *  was already a dot rather than a blank (the craft board's /SLOT·HR). */
+    private static String coinsOrDot(JsonObject o, String key) {
+        Double v = GoldFields.optNum(o, key);
+        return v == null ? "·" : Phos.coins(v);
+    }
+
+    private static String strOf(JsonObject o, String key) {
+        String v = GoldFields.optStr(o, key);
+        return v == null ? "?" : v;
+    }
+
+    private static String intOf(JsonObject o, String key) {
+        Double v = GoldFields.optNum(o, key);
+        return v == null ? "?" : String.valueOf(v.intValue());
+    }
+
+    /** A fraction rendered as a percent, like the boards' margin columns. */
+    private static String pctOf(JsonObject o, String key) {
+        Double v = GoldFields.optNum(o, key);
+        return v == null ? "?%" : Math.round(v * 100) + "%";
+    }
+
+    private static double numOf(JsonObject o, String key) {
+        Double v = GoldFields.optNum(o, key);
+        return v == null ? 0 : v;
+    }
+
+    private static boolean flagOf(JsonObject o, String key) {
+        JsonElement v = o == null ? null : o.get(key);
+        return v != null && v.isJsonPrimitive() && v.getAsBoolean();
     }
 }

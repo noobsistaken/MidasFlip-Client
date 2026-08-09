@@ -44,8 +44,14 @@ final class FinderValuation {
         if (response.has("fallback_from_mods")) {
             return new Result(null, base, opt, "exact bucket unavailable");
         }
-        if (est.has("family") && !est.get("family").isJsonNull()
-                && "exotic".equals(est.get("family").getAsString())) {
+        // optStr, not has()+getAsString: has() is true for an explicit JSON
+        // null and getAsString then throws UnsupportedOperationException on
+        // the render thread, which has no try/catch above it. It also lets
+        // `est` itself be absent — a /price response with no estimate object
+        // at all now blocks on the confidence gate below instead of NPEing.
+        // Production omits fields rather than nulling them (measured
+        // 2026-08-09), so nothing about today's payloads changes here.
+        if ("exotic".equals(GoldFields.optStr(est, "family"))) {
             return new Result(null, base, opt, "exotic · manual price");
         }
         double confidence = number(est, "conf");

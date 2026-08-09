@@ -208,7 +208,13 @@ public final class ItemTooltip {
             return; // unknown / no data / still loading — add nothing
         }
         var resp = el.getAsJsonObject();
-        var est = resp.getAsJsonObject("estimate");
+        // optObj, not getAsJsonObject(): the latter returns null for an
+        // absent key (NPE on the next read) and throws ClassCastException
+        // for an explicit JSON null. Every read below is null-tolerant, so
+        // an estimate-less response now renders the honest lines instead of
+        // killing the render thread — the tooltip path has no try/catch
+        // above it (crash 2026-08-06).
+        var est = GoldFields.optObj(resp, "estimate");
         // /price values are per unit; the flip finder values the complete
         // listing stack. Every number below therefore uses the same total.
         int units = Math.max(stack.getCount(), 1);
@@ -233,7 +239,7 @@ public final class ItemTooltip {
             }
         }
         boolean lowball = resp.has("fallback_from_mods");
-        boolean decomposed = est.has("src") && "decomposed".equals(est.get("src").getAsString());
+        boolean decomposed = "decomposed".equals(GoldFields.optStr(est, "src"));
         Double pess = GoldFields.optNum(est, "pess");
         Double opt = GoldFields.optNum(est, "opt");
         lines.add(Component.literal(""));
@@ -255,11 +261,7 @@ public final class ItemTooltip {
                     + " §8· sell offer §f" + coins(valuation.high() * units) + "§r"));
             lines.add(Component.literal("§8instasell – sell offer · bazaar venue§r"));
         } else {
-            String spd = est.has("spd") && !est.get("spd").isJsonNull()
-                    ? " · " + String.format(Locale.ROOT, "%.1f", est.get("spd").getAsDouble()) + " sold/day"
-                    : "";
-            lines.add(Component.literal("§7conf §f" + String.format(Locale.ROOT, "%.2f", est.get("conf").getAsDouble())
-                    + " §8· " + est.get("comps").getAsInt() + " comps" + spd + "§r"));
+            lines.add(Component.literal(evidenceLine(est)));
             // One valuation seam everywhere: this is the pessimistic band
             // the finder used to decide that an auction was a flip. Lowest
             // BIN is context below, never a replacement sell number.
@@ -351,10 +353,13 @@ public final class ItemTooltip {
             lines.add(Component.literal("§8" + GoldFields.EARLY_ACCESS + "§r"));
         }
         if (pet != null && !bazaar) {
-            String b = resp.has("exp_bucket") ? resp.get("exp_bucket").getAsString()
-                    : Pets.approximateExpBucket(pet.level(), config);
-            boolean exact = resp.has("pet_identity_source")
-                    && "nbt_exact".equals(resp.get("pet_identity_source").getAsString())
+            // has()+getAsString throws on an explicit JSON null; optStr
+            // gives the same string for every payload the server sends and
+            // falls back to the approximation when the field is absent,
+            // which is exactly what the old has() check did.
+            String served = GoldFields.optStr(resp, "exp_bucket");
+            String b = served != null ? served : Pets.approximateExpBucket(pet.level(), config);
+            boolean exact = "nbt_exact".equals(GoldFields.optStr(resp, "pet_identity_source"))
                     && exactPetNbt;
             if (exact && petExp != null) {
                 lines.add(Component.literal("§8Lvl " + pet.level() + " · "
@@ -449,17 +454,28 @@ public final class ItemTooltip {
         if (itemId == null || itemId.isEmpty()) {
             return null;
         }
-        JsonObject row = craftRow(itemId);
-        if (row == null || !row.has("cost") || !row.has("n")) {
+        return craftLine(craftRow(itemId), units);
+    }
+
+    /** The line itself, split out from the lookup so it is testable and so
+     *  the reads go through the null-tolerant accessors: has("cost") is
+     *  TRUE for an explicit JSON null and the getAsDouble that followed it
+     *  threw on the render thread. Absent stays absent — a row we cannot
+     *  read returns null and the tooltip simply omits the line, which is
+     *  what it already did for a row with no cost. (/craft/costs is not
+     *  deployed today: production answers 404, so craftRow returns null and
+     *  this never runs. That is precisely why it needs to be safe before
+     *  the endpoint lands.) */
+    static String craftLine(JsonObject row, int units) {
+        Double cost = GoldFields.optNum(row, "cost");
+        Double yield = GoldFields.optNum(row, "n");
+        if (cost == null || yield == null || yield <= 0) {
             return null;
         }
-        double yield = row.get("n").getAsDouble();
-        if (yield <= 0) {
-            return null;
-        }
-        double perUnit = row.get("cost").getAsDouble() / yield;
-        String kind = row.has("kind") ? row.get("kind").getAsString() : "craft";
-        return "§7est. craft §f" + coins(perUnit * units) + " §8· " + kind + "§r";
+        double perUnit = cost / yield;
+        String kind = GoldFields.optStr(row, "kind");
+        return "§7est. craft §f" + coins(perUnit * units) + " §8· "
+                + (kind == null ? "craft" : kind) + "§r";
     }
 
     // /craft/costs is keyed BY output id, so a tooltip render is one member
@@ -489,6 +505,36 @@ public final class ItemTooltip {
             return String.format(Locale.ROOT, "%.1fk", exp / 1_000.0);
         }
         return String.format(Locale.ROOT, "%.0f", exp);
+    }
+
+    /** The tooltip's evidence line: model confidence, comp count, and how
+     *  fast the bucket turns over when the server measured it.
+     *
+     *  <p>Read through optNum because {@code est.get("conf").getAsDouble()}
+     *  NPEs on an absent key and throws UnsupportedOperationException on an
+     *  explicit JSON null, and a throw here takes the whole game down — the
+     *  tooltip render path has no try/catch above it (crash 2026-08-06).
+     *
+     *  <p>conf and comps are FREE fields (owner tier split 2026-08-06), so
+     *  a missing one is "we do not have this", never a paywall: it renders
+     *  through {@link GoldFields#unknown} and never through locked().
+     *
+     *  <p>Production sends both on every AH estimate and omits fields
+     *  rather than nulling them (measured against the live API 2026-08-09),
+     *  so every payload the server sends today renders byte-identically to
+     *  before. A BAZAAR estimate carries only base/opt/pess, but bazaar
+     *  responses take the other branch and never reach this line. */
+    static String evidenceLine(JsonObject est) {
+        Double spd = GoldFields.optNum(est, "spd");
+        String spdPart = spd == null ? ""
+                : " · " + String.format(Locale.ROOT, "%.1f", spd) + " sold/day";
+        Double conf = GoldFields.optNum(est, "conf");
+        Double comps = GoldFields.optNum(est, "comps");
+        if (conf == null || comps == null) {
+            return GoldFields.unknown("conf") + spdPart + "§r";
+        }
+        return "§7conf §f" + String.format(Locale.ROOT, "%.2f", conf)
+                + " §8· " + comps.intValue() + " comps" + spdPart + "§r";
     }
 
     /** The lowest-BIN depth line from a /price response's optional "lbin"

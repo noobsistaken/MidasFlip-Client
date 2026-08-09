@@ -427,7 +427,12 @@ public final class SellOverlay {
             return;
         }
         JsonObject resp = el.getAsJsonObject();
-        JsonObject est = resp.getAsJsonObject("estimate");
+        // optObj: getAsJsonObject() hands back null for an absent key (NPE
+        // on the next read) and throws for an explicit JSON null. Every
+        // read of `est` below tolerates null, so a response without an
+        // estimate renders the honest "value unverified" panel instead of
+        // throwing on a render thread that has no try/catch above it.
+        JsonObject est = GoldFields.optObj(resp, "estimate");
         // Market path: estimates arrive PER-UNIT; the clipboard gets the
         // stack total, so the displayed rows must be stack totals too —
         // display and paste must agree (×N marks the multiply).
@@ -451,10 +456,10 @@ public final class SellOverlay {
         // Decomposed = server priced clean bucket + learned modifier deltas
         // (est.src, amber-capped conf). NEVER present it without the marker
         // below (spec transparency; the amber cap means it reads softer).
-        boolean decomposed = est.has("src") && "decomposed".equals(est.get("src").getAsString());
+        boolean decomposed = "decomposed".equals(GoldFields.optStr(est, "src"));
         boolean exactPetIdentity = pet == null || useLedgerPetKey
-                || (exactPetNbt && resp.has("pet_identity_source")
-                    && "nbt_exact".equals(resp.get("pet_identity_source").getAsString()));
+                || (exactPetNbt
+                    && "nbt_exact".equals(GoldFields.optStr(resp, "pet_identity_source")));
         // Acting (clipboard copy) demands a CURRENT market; displaying a
         // stale-while-unreachable price with an age marker is fine, but
         // silently arming a paste with one is not (MidasflipApi contract).
@@ -538,18 +543,23 @@ public final class SellOverlay {
         // the gear bucket was requested but missing, the warning REPLACES
         // the note (same footprint, panel height unchanged) — a clean
         // price on a rolled item must read as a lowball, not a verdict.
-        String spd = est.has("spd") && !est.get("spd").isJsonNull()
-                ? " · " + String.format(Locale.ROOT, "%.1f", est.get("spd").getAsDouble()) + "/day"
-                : "";
+        Double spdVal = GoldFields.optNum(est, "spd");
+        String spd = spdVal == null
+                ? ""
+                : " · " + String.format(Locale.ROOT, "%.1f", spdVal) + "/day";
         String note;
         if (lowball) {
             note = "§e⚠ starred/recombed · clean price, likely LOW§r";
         } else if (resp.has("bazaar")) {
             note = "§8bazaar item · fast=instasell · wait=sell offer§r";
         } else if (pet != null) {
-            String tier = resp.has("tier") ? resp.get("tier").getAsString().toLowerCase(Locale.ROOT) : "?";
-            String bucket = resp.has("exp_bucket") ? resp.get("exp_bucket").getAsString()
-                    : petBucketFromKey(resp.has("comp_key") ? resp.get("comp_key").getAsString() : null);
+            // Same fallbacks as before, minus the has()-then-getAs pattern
+            // that throws on an explicit JSON null.
+            String tierStr = GoldFields.optStr(resp, "tier");
+            String tier = tierStr == null ? "?" : tierStr.toLowerCase(Locale.ROOT);
+            String served = GoldFields.optStr(resp, "exp_bucket");
+            String bucket = served != null ? served
+                    : petBucketFromKey(GoldFields.optStr(resp, "comp_key"));
             if (useLedgerPetKey) {
                 note = "§8" + tier + " · finder key · exact " + bucket + spd + "§r";
             } else if (exactPetIdentity && petExp != null) {
@@ -560,14 +570,40 @@ public final class SellOverlay {
                         + " · approximate " + bucket + " · clipboard off§r";
             }
         } else {
-            String bucket = resp.has("comp_key") && resp.get("comp_key").getAsString().matches(".*\\|s\\d+\\|r1.*")
-                    ? "recomb bucket" : resp.has("comp_key") && resp.get("comp_key").getAsString().matches(".*\\|s[1-9]\\d*\\|r\\d.*")
-                    ? "starred bucket" : "clean bucket";
-            note = "§8" + bucket + " · " + est.get("comps").getAsInt()
-                    + " comps · conf " + String.format(Locale.ROOT, "%.2f", est.get("conf").getAsDouble())
-                    + spd + "§r";
+            note = gearNote(resp, est, spd);
         }
         Phos.text(g, font, note, cx, cy, Phos.FAINT);
+    }
+
+    /** The gear panel's bottom note: which bucket priced this, and the
+     *  evidence behind it. {@code spdSuffix} is the pre-formatted velocity
+     *  tail (empty when the server measured none).
+     *
+     *  <p>Split out of the render method so it is testable, and read
+     *  through the null-tolerant accessors: {@code est.get("comps")} NPEs
+     *  when the key is absent and {@code has("comp_key")} is TRUE for an
+     *  explicit JSON null, whose getAsString then throws. Either kills the
+     *  game, because the overlay renders with no try/catch above it.
+     *
+     *  <p>comps and conf are FREE fields, so their absence reads "not
+     *  available" and never as a lock. An AH estimate carries both today
+     *  and the live API omits rather than nulls (measured 2026-08-09), so
+     *  the rendered note is unchanged for every real payload; a BAZAAR
+     *  response, which carries neither, is caught by the bazaar branch
+     *  above and never reaches here. */
+    static String gearNote(JsonObject resp, JsonObject est, String spdSuffix) {
+        String compKey = GoldFields.optStr(resp, "comp_key");
+        String bucket = compKey != null && compKey.matches(".*\\|s\\d+\\|r1.*")
+                ? "recomb bucket"
+                : compKey != null && compKey.matches(".*\\|s[1-9]\\d*\\|r\\d.*")
+                ? "starred bucket" : "clean bucket";
+        Double comps = GoldFields.optNum(est, "comps");
+        Double conf = GoldFields.optNum(est, "conf");
+        String evidence = comps == null || conf == null
+                ? "comps · not available"
+                : comps.intValue() + " comps · conf "
+                        + String.format(Locale.ROOT, "%.2f", conf);
+        return "§8" + bucket + " · " + evidence + spdSuffix + "§r";
     }
 
     // Clipboard copy is idempotent per value — the panel redraws every

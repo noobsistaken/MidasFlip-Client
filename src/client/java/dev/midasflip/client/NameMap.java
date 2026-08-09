@@ -1,7 +1,6 @@
 package dev.midasflip.client;
 
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 
 import java.util.Locale;
 
@@ -44,9 +43,14 @@ public final class NameMap {
         if (api != null) {
             JsonElement el = api.get("/names", 60 * 60_000);
             if (el != null && el.isJsonObject()) {
-                JsonObject map = el.getAsJsonObject();
-                if (map.has(itemId)) {
-                    return map.get(itemId).getAsString();
+                // A null or non-string entry in /names must not throw: this
+                // runs on every board row and every HUD line, none of which
+                // has a try/catch above it. Falling through to the
+                // title-cased id is exactly what an absent entry already
+                // did, so no live payload renders differently.
+                String pretty = GoldFields.optStr(el.getAsJsonObject(), itemId);
+                if (pretty != null) {
+                    return pretty;
                 }
             }
         }

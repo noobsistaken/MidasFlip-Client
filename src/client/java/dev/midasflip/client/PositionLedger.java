@@ -3,7 +3,6 @@ package dev.midasflip.client;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import net.fabricmc.loader.api.FabricLoader;
 
@@ -386,11 +385,19 @@ public final class PositionLedger {
                 p.curPess = null;
                 continue;
             }
-            JsonObject est = el.getAsJsonObject().getAsJsonObject("estimate");
-            if (est == null || !est.has("pess")) {
+            // has("pess") is TRUE for an explicit JSON null, and the
+            // getAsDouble that followed threw UnsupportedOperationException
+            // — from inside the HUD render loop, which has no try/catch
+            // above it. optNum collapses absent, null and non-numeric into
+            // the one case this code already handled: keep the last known
+            // value and move on. Production omits rather than nulls
+            // (measured 2026-08-09), so no live payload changes behaviour.
+            Double pess = GoldFields.optNum(
+                    GoldFields.optObj(el.getAsJsonObject(), "estimate"), "pess");
+            if (pess == null) {
                 continue;
             }
-            p.curPess = est.get("pess").getAsDouble();
+            p.curPess = pess;
         }
     }
 

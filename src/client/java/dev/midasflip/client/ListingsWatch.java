@@ -129,27 +129,19 @@ public final class ListingsWatch {
             current = List.of(); // dead API must not sustain old alerts
             return;
         }
-        JsonArray open = el.getAsJsonObject().getAsJsonArray("open");
+        // optArr, not getAsJsonArray(): the latter returns null for an absent
+        // key (already handled) but throws ClassCastException for an explicit
+        // JSON null, from the HUD poll that has no try/catch above it.
+        JsonArray open = GoldFields.optArr(el.getAsJsonObject(), "open");
         if (open == null) {
             return;
         }
         List<Mine> parsed = new ArrayList<>(open.size());
         for (JsonElement e : open) {
-            JsonObject o = e.getAsJsonObject();
-            if (!o.has("auction_uuid")) {
-                continue;
+            Mine m = parseMine(e);
+            if (m != null) {
+                parsed.add(m);
             }
-            parsed.add(new Mine(
-                    o.get("auction_uuid").getAsString(),
-                    o.has("item_id") && !o.get("item_id").isJsonNull() ? o.get("item_id").getAsString() : "?",
-                    o.has("comp_key") && !o.get("comp_key").isJsonNull() ? o.get("comp_key").getAsString() : "",
-                    o.get("price").getAsLong(),
-                    o.get("unit_price").getAsDouble(),
-                    o.get("status").getAsString(),
-                    dbl(o, "floor_unit"), dbl(o, "suggest_unit"),
-                    lng(o, "hold_med_s"), lng(o, "hold_p90_s"),
-                    o.has("listed_s") ? o.get("listed_s").getAsLong() : 0,
-                    dbl(o, "net_now"), dbl(o, "suggest_net")));
         }
         current = parsed;
         chatAlerts(mc, parsed);
@@ -157,24 +149,80 @@ public final class ListingsWatch {
         // Sale reconciliation: the server's history catches sells the chat
         // listener missed and carries the fee-true nets the lifetime tally
         // uses. Ledger consumes each auction id at most once.
-        JsonArray soldArr = el.getAsJsonObject().getAsJsonArray("sold_recent");
+        JsonArray soldArr = GoldFields.optArr(el.getAsJsonObject(), "sold_recent");
         if (soldArr != null && ledger != null) {
             List<Sold> sold = new ArrayList<>(soldArr.size());
             for (JsonElement e : soldArr) {
-                JsonObject o = e.getAsJsonObject();
-                if (!o.has("auction_uuid") || !o.has("price")) {
-                    continue;
+                Sold s = parseSold(e);
+                if (s != null) {
+                    sold.add(s);
                 }
-                sold.add(new Sold(
-                        o.get("auction_uuid").getAsString(),
-                        o.has("item_id") && !o.get("item_id").isJsonNull() ? o.get("item_id").getAsString() : "?",
-                        o.has("comp_key") && !o.get("comp_key").isJsonNull() ? o.get("comp_key").getAsString() : "",
-                        o.get("price").getAsLong(),
-                        endedMs(o),
-                        dbl(o, "net")));
             }
             ledger.reconcileSold(sold);
         }
+    }
+
+    /** One open listing, or null when the row cannot be read.
+     *
+     *  <p>This whole path runs from the HUD render loop, which has no
+     *  try/catch above it, and four of these fields were read unguarded:
+     *  an absent key NPEs and an explicit JSON null throws
+     *  UnsupportedOperationException. A listing missing its id, price, unit
+     *  price or status cannot be judged undercut or stale and cannot be
+     *  priced against the floor, so it is skipped rather than rendered
+     *  half-read. The live API sends all four on every row and omits fields
+     *  rather than nulling them (measured 2026-08-09), so no real listing
+     *  is dropped by this. */
+    static Mine parseMine(JsonElement e) {
+        if (e == null || !e.isJsonObject()) {
+            return null;
+        }
+        JsonObject o = e.getAsJsonObject();
+        String uuid = GoldFields.optStr(o, "auction_uuid");
+        Double price = GoldFields.optNum(o, "price");
+        Double unitPrice = GoldFields.optNum(o, "unit_price");
+        String status = GoldFields.optStr(o, "status");
+        if (uuid == null || price == null || unitPrice == null || status == null) {
+            return null;
+        }
+        String itemId = GoldFields.optStr(o, "item_id");
+        String compKey = GoldFields.optStr(o, "comp_key");
+        Double listedS = GoldFields.optNum(o, "listed_s");
+        return new Mine(
+                uuid,
+                itemId == null ? "?" : itemId,
+                compKey == null ? "" : compKey,
+                price.longValue(),
+                unitPrice,
+                status,
+                dbl(o, "floor_unit"), dbl(o, "suggest_unit"),
+                lng(o, "hold_med_s"), lng(o, "hold_p90_s"),
+                listedS == null ? 0 : listedS.longValue(),
+                dbl(o, "net_now"), dbl(o, "suggest_net"));
+    }
+
+    /** One reconciled sale, or null when the row cannot be read. Same
+     *  reasoning as {@link #parseMine}: id and price were guarded by has(),
+     *  which passes for an explicit JSON null. */
+    static Sold parseSold(JsonElement e) {
+        if (e == null || !e.isJsonObject()) {
+            return null;
+        }
+        JsonObject o = e.getAsJsonObject();
+        String uuid = GoldFields.optStr(o, "auction_uuid");
+        Double price = GoldFields.optNum(o, "price");
+        if (uuid == null || price == null) {
+            return null;
+        }
+        String itemId = GoldFields.optStr(o, "item_id");
+        String compKey = GoldFields.optStr(o, "comp_key");
+        return new Sold(
+                uuid,
+                itemId == null ? "?" : itemId,
+                compKey == null ? "" : compKey,
+                price.longValue(),
+                endedMs(o),
+                dbl(o, "net"));
     }
 
     private static long endedMs(JsonObject o) {
@@ -224,11 +272,15 @@ public final class ListingsWatch {
         return String.format("%.1fh", seconds / 3600.0);
     }
 
+    // Both already tolerated absent and null; routed through optNum so a
+    // non-numeric value (a string, an object) is also "we do not have this"
+    // rather than a throw on the render thread.
     private static Double dbl(JsonObject o, String k) {
-        return o.has(k) && !o.get(k).isJsonNull() ? o.get(k).getAsDouble() : null;
+        return GoldFields.optNum(o, k);
     }
 
     private static Long lng(JsonObject o, String k) {
-        return o.has(k) && !o.get(k).isJsonNull() ? o.get(k).getAsLong() : null;
+        Double v = GoldFields.optNum(o, k);
+        return v == null ? null : v.longValue();
     }
 }

@@ -817,9 +817,14 @@ public final class ItemTooltip {
      *      captured input. */
     static java.util.List<String> modContribLines(JsonObject resp, int units, boolean expanded) {
         var rows = new java.util.ArrayList<>(modContribs(resp));
-        if (rows.isEmpty()) {
-            return java.util.List.of();
-        }
+        // NO early return on an empty priced list. It used to bail here, which
+        // skipped the recognised-but-unpriced block below entirely — so on any
+        // item where nothing has been learned yet (the common case, and
+        // exactly the item a player most wants explained) the tooltip showed
+        // no rows AND no hint, and holding shift did nothing with no way to
+        // tell whether the feature was broken or the data was absent. Owner
+        // hit this on live items twice; the second time was this bug rather
+        // than the cap (2026-08-10).
         rows.sort((x, y) -> Double.compare(Math.abs(y.getValue()), Math.abs(x.getValue())));
         java.util.List<String> out = new java.util.ArrayList<>();
         int shown = expanded ? rows.size() : Math.min(rows.size(), MAX_CONTRIB_LINES);

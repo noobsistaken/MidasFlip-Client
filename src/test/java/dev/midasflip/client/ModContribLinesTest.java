@@ -362,4 +362,31 @@ class ModContribLinesTest {
         assertEquals(1, out.size(), out.toString());
         assertFalse(String.join("", out).contains("SHIFT"));
     }
+
+    @Test
+    void anItemWithNothingLearnedYetStillOffersTheHint() {
+        // The regression the owner hit twice. Every atom recognised, none
+        // priced: the method used to return an EMPTY list because no priced
+        // rows survived, so the tooltip showed nothing and shift did nothing,
+        // with no way to tell a broken feature from absent data.
+        JsonObject noneLearned = resp("""
+                {"mod_contributions": [
+                    {"feature": "ult:wise_5", "learned_delta": 0.0, "learned": false},
+                    {"feature": "gem:PERFECT_JASPERx2", "learned_delta": 0.0, "learned": false}]}""");
+
+        List<String> collapsed = ItemTooltip.modContribLines(noneLearned, 1, false);
+        assertFalse(collapsed.isEmpty(), "an unpriced-but-recognised item must still say something");
+        assertTrue(String.join("", collapsed).contains("SHIFT"), collapsed.toString());
+
+        List<String> expanded = ItemTooltip.modContribLines(noneLearned, 1, true);
+        assertEquals(2, expanded.size(), expanded.toString());
+        assertTrue(String.join("\n", expanded).contains("no value learned yet"));
+        assertFalse(String.join("", expanded).matches(".*[+-]\\d.*"), expanded.toString());
+    }
+
+    @Test
+    void trulyNothingToSayStillRendersNothing() {
+        assertEquals(List.of(), ItemTooltip.modContribLines(resp("{}"), 1, false));
+        assertEquals(List.of(), ItemTooltip.modContribLines(resp("{\"mod_contributions\": []}"), 1, true));
+    }
 }

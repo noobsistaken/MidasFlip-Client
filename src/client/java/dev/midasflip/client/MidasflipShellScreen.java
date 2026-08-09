@@ -842,7 +842,17 @@ public final class MidasflipShellScreen extends PhosScreen {
         Phos.text(g, font, GoldFields.badge(), x, y, Phos.ACCENT);
         y += 13;
         int bx = x;
-        for (String k : new String[]{"all", "craft", "forge", "kat", "bz craft", "bz", "npc"}) {
+        // "bz craft" REMOVED 2026-08-10. It filtered client-side for a pure
+        // bazaar loop (kind=craft, sell_via=bazaar, every input via bazaar)
+        // over /craft/evs — which is a TOP-100-BY-PROFIT board. Pure bazaar
+        // loops are low-margin and high-volume, so they never reach that
+        // top 100: measured on the live board, 1 row of 100 sells via bazaar
+        // and ZERO satisfy the full predicate. The chip could not show
+        // anything, ever, and rendered an empty table with headers. Filtering
+        // a list the server already truncated by a different ranking cannot
+        // work; surfacing these needs a server-side change, not a client
+        // filter.
+        for (String k : new String[]{"all", "craft", "forge", "kat", "bz", "npc"}) {
             boolean sel = k.equals(kindFilter);
             int bw = Phos.w(font, k) + 12;
             if (sel) {
@@ -1007,9 +1017,7 @@ public final class MidasflipShellScreen extends PhosScreen {
         }
     }
 
-    /** Craft-table kind filter. "bz craft" = a pure bazaar loop: craft
-     *  kind, sold on bazaar, EVERY input bought on bazaar (input via is
-     *  "bazaar" or "ah:<comp_key>", craft.py's _price_input). */
+    /** Craft-table kind filter, matched against the row's own `kind`. */
     private boolean craftKindMatches(JsonObject r) {
         if ("all".equals(kindFilter)) {
             return true;
@@ -1022,23 +1030,6 @@ public final class MidasflipShellScreen extends PhosScreen {
         // every row (measured 2026-08-09), so the filter's verdict is
         // unchanged for real data.
         String kind = GoldFields.optStr(r, "kind");
-        if ("bz craft".equals(kindFilter)) {
-            if (!"craft".equals(kind)
-                    || !"bazaar".equals(GoldFields.optStr(r, "sell_via"))) {
-                return false;
-            }
-            JsonArray inputs = GoldFields.optArr(r, "inputs");
-            if (inputs == null) {
-                return false;
-            }
-            for (JsonElement ie : inputs) {
-                if (!ie.isJsonObject()
-                        || !"bazaar".equals(GoldFields.optStr(ie.getAsJsonObject(), "via"))) {
-                    return false;
-                }
-            }
-            return true;
-        }
         return kindFilter.equals(kind);
     }
 

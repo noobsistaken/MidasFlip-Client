@@ -31,13 +31,13 @@ public final class NameMap {
         if (itemId.startsWith("PET:")) {
             String[] p = itemId.split(":");
             if (p.length >= 3) {
-                return titleCase(p[1]) + " pet §8(" + p[2].substring(0, 3).toLowerCase(Locale.ROOT) + ")§r";
+                return titleCase(p[1]) + " pet §8(" + tierAbbrev(p[2]) + ")§r";
             }
         }
         if ("PET".equals(itemId) && compKey != null) {
             String[] p = compKey.split("\\|");
             if (p.length >= 4) {
-                return titleCase(p[2]) + " pet §8(" + p[3].substring(0, 3).toLowerCase(Locale.ROOT) + ")§r";
+                return titleCase(p[2]) + " pet §8(" + tierAbbrev(p[3]) + ")§r";
             }
         }
         if (api != null) {
@@ -55,6 +55,17 @@ public final class NameMap {
             }
         }
         return titleCase(itemId);
+    }
+
+    /** First three letters of a tier, or the whole thing when it is
+     *  shorter. The guards above check the number of segments, not their
+     *  length, so a tier segment under 3 chars threw
+     *  StringIndexOutOfBoundsException — from pretty(), which runs on every
+     *  HUD row, board row and tooltip, none of which has a try/catch above
+     *  it (review 2026-08-10). */
+    private static String tierAbbrev(String tier) {
+        String t = tier == null ? "" : tier;
+        return (t.length() > 3 ? t.substring(0, 3) : t).toLowerCase(Locale.ROOT);
     }
 
     public static String pretty(String itemId) {

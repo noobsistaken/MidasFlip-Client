@@ -20,7 +20,14 @@ import java.util.regex.Pattern;
 public final class Pets {
     private Pets() {}
 
-    private static final Pattern LVL = Pattern.compile("^\\[Lvl (\\d+)] (.+)$");
+    // BOUNDED before parseInt. The level is read from an item's DISPLAY
+    // NAME, which is player-controllable text, and parse() runs on the
+    // tooltip render path that has no try/catch above it. An 11-digit run
+    // overflows Integer.parseInt and takes the game down on a hover. Golden
+    // Dragon caps at 200, so three digits covers every real pet; anything
+    // longer is not a pet and falls through to the market path, which is the
+    // honest outcome (review 2026-08-10).
+    private static final Pattern LVL = Pattern.compile("^\\[Lvl (\\d{1,3})] (.+)$");
 
     public record PetName(String type, int level, String tier) {}
 

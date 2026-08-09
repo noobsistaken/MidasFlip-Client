@@ -470,7 +470,12 @@ public final class SellOverlay {
         // marker); the clipboard stays a direct-comp-only convenience —
         // same conservative posture as stale/lowball (safety-review NOTE
         // 2026-07-13). The human can still type the shown number by hand.
-        if (!stale && !lowball && !decomposed && exactPetIdentity) {
+        // Never arm the clipboard from a BAZAAR price. This overlay only
+        // opens on the create-auction screen, so the paste target is an
+        // auction sign; a bazaar instasell figure typed there is a price for
+        // a different venue with different fees. The panel now says so, and
+        // the clipboard must agree with the panel.
+        if (!stale && !lowball && !decomposed && exactPetIdentity && !resp.has("bazaar")) {
             copyPrice(marketSuggest);
         }
         Phos.text(g, font, "§7finder valuation" + (units > 1 ? " §f×" + units : "")
@@ -496,14 +501,32 @@ public final class SellOverlay {
             // of the fees this sits on has to be on screen. The client does
             // not compute fees (see PositionLedger.underwater) — it only
             // says which number this is.
-            row(g, font, cx, cy, "list at", valuation.target() * units, null);
-            cy += 11;
-            row(g, font, cx, cy, "fair", valuation.fair() * units, null);
-            cy += 11;
-            row(g, font, cx, cy, "high", valuation.high() * units, null);
-            cy += 11;
-            Phos.text(g, font, "§8gross · AH fees come off§r", cx, cy, Phos.FAINT);
-            cy += 13;
+            if (resp.has("bazaar")) {
+                // A BAZAAR item is an order book, not a listing. pess IS the
+                // instasell and opt IS the sell offer; neither pays the AH
+                // listing fee or claim tax, and neither is a number you type
+                // into an auction sign. Rendering it under "list at ... gross
+                // · AH fees come off" put a fee caveat on a price that does
+                // not pay those fees, on a panel whose own footer already said
+                // "bazaar item · fast=instasell" — the panel contradicted
+                // itself on screen. The tooltip has always branched here
+                // (ItemTooltip's bazaar arm); this surface had not.
+                row(g, font, cx, cy, "instasell", valuation.target() * units, null);
+                cy += 11;
+                row(g, font, cx, cy, "sell offer", valuation.high() * units, null);
+                cy += 11;
+                Phos.text(g, font, "§8bazaar venue · not an AH listing§r", cx, cy, Phos.FAINT);
+                cy += 13;
+            } else {
+                row(g, font, cx, cy, "list at", valuation.target() * units, null);
+                cy += 11;
+                row(g, font, cx, cy, "fair", valuation.fair() * units, null);
+                cy += 11;
+                row(g, font, cx, cy, "high", valuation.high() * units, null);
+                cy += 11;
+                Phos.text(g, font, "§8gross · AH fees come off§r", cx, cy, Phos.FAINT);
+                cy += 13;
+            }
         } else {
             Phos.text(g, font, "§evalue unverified§r", cx, cy, Phos.YELLOW);
             cy += 11;
@@ -737,7 +760,7 @@ public final class SellOverlay {
         if (compKey == null) {
             return true;
         }
-        var m = java.util.regex.Pattern.compile("\\|s(\\d+)(?:\\||$)").matcher(compKey);
+        var m = java.util.regex.Pattern.compile("\\|s(\\d{1,3})(?:\\||$)").matcher(compKey);
         return !m.find() || Integer.parseInt(m.group(1)) == visibleStars;
     }
 

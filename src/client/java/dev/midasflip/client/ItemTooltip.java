@@ -419,7 +419,7 @@ public final class ItemTooltip {
      *  A key with no star segment is compatible with anything — absence is
      *  not a claim of zero. */
     private static boolean starsMatch(String compKey, int visibleStars) {
-        var m = java.util.regex.Pattern.compile("\\|s(\\d+)(?:\\||$)").matcher(compKey);
+        var m = java.util.regex.Pattern.compile("\\|s(\\d{1,3})(?:\\||$)").matcher(compKey);
         return !m.find() || Integer.parseInt(m.group(1)) == visibleStars;
     }
 
@@ -991,7 +991,7 @@ public final class ItemTooltip {
         if (compKey == null) {
             return -1;
         }
-        var m = java.util.regex.Pattern.compile("\\|s(\\d+)(?:\\||$)").matcher(compKey);
+        var m = java.util.regex.Pattern.compile("\\|s(\\d{1,3})(?:\\||$)").matcher(compKey);
         return m.find() ? Integer.parseInt(m.group(1)) : -1;
     }
 

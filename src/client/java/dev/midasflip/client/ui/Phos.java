@@ -108,9 +108,16 @@ public final class Phos {
         }
         double a = Math.abs(v);
         String s;
-        if (a >= 1e9) s = String.format("%.2fB", v / 1e9);
-        else if (a >= 1e6) s = String.format("%.1fM", v / 1e6);
-        else if (a >= 1e3) s = String.format("%.0fk", v / 1e3);
+        // Locale.ROOT, like the rawCoins branch above and every other format
+        // call in this mod. Without it a German or French JVM renders "15,1M"
+        // where the velocity tail on the SAME line reads "2.4/day" — the two
+        // halves of one line disagreeing about the decimal separator. Every
+        // coin figure in the product routes through here, so this was the one
+        // formatter that could make a shared screenshot ambiguous (review
+        // 2026-08-10).
+        if (a >= 1e9) s = String.format(java.util.Locale.ROOT, "%.2fB", v / 1e9);
+        else if (a >= 1e6) s = String.format(java.util.Locale.ROOT, "%.1fM", v / 1e6);
+        else if (a >= 1e3) s = String.format(java.util.Locale.ROOT, "%.0fk", v / 1e3);
         else s = String.valueOf((long) v);
         return s;
     }

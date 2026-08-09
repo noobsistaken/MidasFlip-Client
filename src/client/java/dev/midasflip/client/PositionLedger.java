@@ -148,11 +148,27 @@ public final class PositionLedger {
      * within that evidence tier. Otherwise old unreconciled history can
      * consume a new sale before the actual tracked position. */
     public synchronized void onSold(String displayName, long price) {
-        String want = normalize(displayName);
+        // Compare the way the BUY side does (SessionTracker.sameItem). The
+        // chat line carries the DISPLAY name; p.itemId is a SkyBlock id, and
+        // no string rule bridges POWER_WITHER_CHESTPLATE to "Necron's
+        // Chestplate". normalize(itemId) vs a display name silently failed to
+        // match on every reforged, starred or possessive item, so the position
+        // never left open/listed: lifetime P&L undercounted, the HUD kept
+        // warning "underwater" about something already sold, and onListed's
+        // newest-open-position heuristic could mark the stale row listed
+        // instead of the real one. The buy side was fixed on 2026-08-06 and
+        // the sell side was missed; no test covered onSold (review
+        // 2026-08-10).
+        String want = SessionTracker.norm(displayName);
+        String wantBase = SessionTracker.normDereforged(displayName);
         Position match = null;
         int bestScore = 0;
         for (Position p : positions) {
-            if (!"sold".equals(p.state) && normalize(p.itemId).equals(want)) {
+            if ("sold".equals(p.state)) {
+                continue;
+            }
+            String ours = SessionTracker.norm(NameMap.pretty(p.itemId, p.compKey));
+            if (!ours.isEmpty() && (ours.equals(want) || ours.equals(wantBase))) {
                 int score = p.compKey != null && !p.compKey.isEmpty() ? 2 : 1;
                 if (score > bestScore
                         || (score == bestScore && match != null && p.boughtAtMs < match.boughtAtMs)) {

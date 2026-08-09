@@ -195,13 +195,16 @@ public final class MidasflipConfig {
      *  exists to refute. Off by default means the claim never arises. */
     public boolean craftLegSend = false;
 
-    // ---- Auctions tab (bid-flip candidates from /auctions/bids). OFF by
-    // default (owner: "should also be toggleable" — when off the sidebar
-    // hides the tab entirely). auctionMinMarginPct / auctionMaxEndMin are
-    // CLIENT display filters over the server's bid board, never a way past
-    // the server's pro gate. TODO(config-wiring): carry these in Preset
-    // share codes once the follow-up config pass lands. ----
-    public boolean auctionTab = false;      // sidebar tab hidden until enabled
+    // ---- Auctions tab (bid-flip candidates from /auctions/bids). ON by
+    // default since 2026-08-10: the launch listing names auction bid flips as
+    // a feature, and shipping it hidden meant a user read that line, went
+    // looking, and found nothing. Still toggleable (owner's original ask) —
+    // the sidebar hides the tab entirely when off. auctionMinMarginPct /
+    // auctionMaxEndMin are CLIENT display filters over the server's bid
+    // board, never a way past the server's pro gate. TODO(config-wiring):
+    // carry these in Preset share codes once the follow-up config pass
+    // lands. ----
+    public boolean auctionTab = true;       // sidebar tab; toggle in Display
     public int auctionMaxRows = 8;          // clamp [3,15]
     public int auctionMinMarginPct = 10;    // margin_at_next floor %, clamp [0,100]
     public int auctionMaxEndMin = 45;       // hide auctions ending further out, clamp [5,45]

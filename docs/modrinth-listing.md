@@ -16,12 +16,21 @@ there can get a project taken down, and one is specific to Hypixel mods.
 | Slug | `midasflip` |
 | Project type | Mod |
 | Client/server | **Client-side only** (`environment: client`) |
-| Categories | `utility`, `social` |
+| Categories | **Economy** + **Utility** (only these two) |
+| Featured tags | **Economy** first, then Utility |
 | License | **GPL-3.0-only** |
 | Source | `https://github.com/noobsistaken/MidasFlip-Client` |
 | Issues | `https://github.com/noobsistaken/MidasFlip-Client/issues` |
 | Website | `https://midasflip.com` |
 | Icon | `midasflip-icon-512.png` (on your Desktop) |
+
+**On categories:** an earlier draft of this file said `utility, social`. Social
+is wrong — on Modrinth it means chat and player-interaction mods. Economy is the
+accurate one for an auction-house and bazaar tool, and it is far less crowded
+than Utility, so featuring it first puts the listing in front of a more relevant
+browser. Resist adding Management for the P&L tracking: on Modrinth that reads
+as server/world management, and over-tagging is something reviewers push back
+on.
 
 Environments: **Client required, Server unsupported.** It never talks to the
 Minecraft server except by the commands you fire yourself.

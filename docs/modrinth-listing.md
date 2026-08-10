@@ -200,10 +200,16 @@ Shoot these five, in this order of value:
 
 1. **The flip board** with real rows — the product in one image
 2. **A tooltip on a heavily modified item**, breakdown visible — this is the
-   differentiator nobody else has. Pick an item with MORE than four priced
-   modifiers and hold SHIFT, so the shot shows the expanded list rather than
-   the default four; on a lightly modded item SHIFT changes nothing because
-   everything already fits
+   differentiator nobody else has. Two things decide whether this shot works:
+
+   - **Shoot it from your own INVENTORY, not the auction house.** Inside an AH
+     menu the mod can only read the item's lore text, so it counts enchants but
+     cannot see gems or hot potato books — it prints "menu view · enchants
+     counted, gems/HPB not visible" and you get far fewer rows. From your
+     inventory it reads the full NBT and prices everything.
+   - **Pick an item with MORE than four priced modifiers**, then hold SHIFT.
+     Under four, everything already fits on screen and SHIFT changes nothing,
+     so the screenshot shows no benefit
 3. **The comps peek** (hold TAB on a row) showing recent sales and the
    rejected-outlier count — "shows its working" made concrete
 4. **The Plan tab** — the free/Gold table with `0s / 0s` on the speed row

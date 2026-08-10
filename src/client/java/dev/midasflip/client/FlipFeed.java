@@ -260,6 +260,19 @@ public final class FlipFeed implements WebSocket.Listener {
                 Midasflip.LOG.warn("oversized ws frame · dropping buffer and reconnecting");
                 partial.setLength(0);
                 webSocket.abort();
+                // abort() stops the receive scheduler, so NO onClose and NO
+                // onError follow. Without this the log line was a promise the
+                // code could not keep: `current` still pointed at a dead
+                // socket, isConnected() kept rendering "live", and the feed
+                // never came back for the rest of the session. Schedule the
+                // reconnect the message already claims. Guarded on identity:
+                // scheduleReconnect() clears `current` unconditionally, so
+                // firing it for a socket that is no longer the installed one
+                // would retire a newer, healthy connection (review
+                // 2026-08-10).
+                if (webSocket == current) {
+                    scheduleReconnect();
+                }
                 return null;
             }
             partial.append(data);

@@ -78,12 +78,20 @@ public final class ListingsWatch {
         if (ledger == null || m.netNow() == null || m.suggestNet() == null) {
             return "";
         }
-        Long paid = ledger.costBasisFor(m.itemId(), m.compKey());
-        if (paid == null) {
+        // Scale the basis to THIS listing. netNow/suggestNet are the whole
+        // listing's proceeds, while a position's buyPrice is the total for all
+        // its units — subtracting one from the other compared a stack against
+        // a single item. Buying 64 Enchanted Diamonds for 40M and listing one
+        // at 700k reported a 39.3M loss (review 2026-08-10).
+        Double perUnitPaid = ledger.costBasisPerUnitFor(m.itemId(), m.compKey());
+        if (perUnitPaid == null || m.unitPrice() <= 0) {
             return "";
         }
-        long now = Math.round(m.netNow() - paid);
-        long after = Math.round(m.suggestNet() - paid);
+        // The listing's own size, from its own two numbers.
+        long units = Math.max(1, Math.round(m.price() / m.unitPrice()));
+        double basis = perUnitPaid * units;
+        long now = Math.round(m.netNow() - basis);
+        long after = Math.round(m.suggestNet() - basis);
         return signed(now) + " \u2192 " + signed(after);
     }
 

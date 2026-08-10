@@ -1572,13 +1572,25 @@ public final class MidasflipShellScreen extends PhosScreen {
                 () -> config.marginAlertSound = !config.marginAlertSound);
         cycle(g, x + half + 10, y, half, "menu tab sound: " + (config.tabSound ? "on" : "off"),
                 () -> config.tabSound = !config.tabSound);
-        contSlider(g, x + half + 10, y, half, "alert volume", 0, 100, 5, Math.round(config.marginAlertVolume * 100),
-                v -> v + "%", v -> config.marginAlertVolume = v / 100f);
         y += 30;
         // Undercut poll cadence (30s floor is a hard politeness clamp).
         contSlider(g, x, y, half, "undercut poll", 30, 300, 5, config.undercutPollSec,
                 v -> v + "s", v -> config.undercutPollSec = (int) v);
-        Phos.text(g, font, "§830s floor is hard-coded (politeness)§r", x + half + 10, y + 2, Phos.FAINT);
+        // "alert volume" lives HERE, in the cell this row already had spare.
+        // It used to share an origin with "menu tab sound" one row up: same
+        // cell, same width, labels overprinting into unreadable text, and
+        // because PhosScreen walks click zones back-to-front the slider's drag
+        // zone (registered second) swallowed the whole y+6..y+14 band, leaving
+        // the toggle unclickable except for a ~9px sliver. Two review lenses
+        // found it independently (2026-08-10).
+        //
+        // Giving it its own ROW was the obvious fix and the wrong one: it
+        // pushed this pane to 284px against the ~250px a 270-tall root allows
+        // at GUI scale 4, trading an unreachable control for an invisible one.
+        // The politeness note it replaces is a static line, not a control.
+        contSlider(g, x + half + 10, y, half, "alert volume", 0, 100, 5,
+                Math.round(config.marginAlertVolume * 100),
+                v -> v + "%", v -> config.marginAlertVolume = v / 100f);
     }
 
     private static String anchorLabel(MidasflipConfig.HudAnchor a) {
@@ -1643,7 +1655,7 @@ public final class MidasflipShellScreen extends PhosScreen {
         y += 22;
         Phos.text(g, font, "§8(500ms floor is hard-coded)§r", x, y, Phos.FAINT);
         y += 14;
-        Phos.text(g, font, "§7audit log: every action recorded in config/midasflip-audit.log§r", x, y, Phos.DIM);
+        Phos.text(g, font, "§7audit log: every action recorded in config/midasflip-audit.jsonl§r", x, y, Phos.DIM);
         y += 14;
         Phos.text(g, font, "§8midasflip is lower-risk by architecture, never \"guaranteed safe\"§r", x, y, Phos.FAINT);
     }

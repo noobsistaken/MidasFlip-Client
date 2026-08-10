@@ -167,8 +167,21 @@ public final class Preset {
         c.auctionMaxRows = auctionMaxRows;
         c.auctionMinMarginPct = auctionMinMarginPct;
         c.auctionMaxEndMin = auctionMaxEndMin;
-        c.familyTuning = familyTuning == null ? new LinkedHashMap<>() : new LinkedHashMap<>(familyTuning);
-        c.rules = rules == null ? new java.util.ArrayList<>() : new java.util.ArrayList<>(rules);
+        // DEEP copies, via the same GSON round-trip fromConfig() uses. The
+        // shallow ones here handed the live config the very same Rule and
+        // FamilyTune INSTANCES held by the stored preset, so editing a rule
+        // afterwards silently rewrote the preset you applied it from — and
+        // saving over it looked like a no-op because both sides were already
+        // the same object. fromConfig deep-copies on the way in; apply() has
+        // to do the same on the way out or the asymmetry aliases them
+        // (review 2026-08-10).
+        c.familyTuning = familyTuning == null ? new LinkedHashMap<>()
+                : GSON.fromJson(GSON.toJson(familyTuning),
+                        new com.google.gson.reflect.TypeToken<LinkedHashMap<String,
+                                MidasflipConfig.FamilyTune>>() {}.getType());
+        c.rules = rules == null ? new java.util.ArrayList<>()
+                : GSON.fromJson(GSON.toJson(rules),
+                        new com.google.gson.reflect.TypeToken<java.util.ArrayList<Rule>>() {}.getType());
         c.normalize();
         c.save();
     }

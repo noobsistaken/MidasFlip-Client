@@ -166,6 +166,8 @@ First public release.
 **Safety**
 - STRICT mode by default: sends nothing, copies to clipboard
 - ASSISTED mode is opt-in and sends `/viewauction` only on your keypress
+- Recipe leg search, its own separate toggle, sends one `/bz` or `/ahs` when
+  you click a craft ingredient; it shares assisted open's cooldown
 - Purchase confirm overlay off by default, ASSISTED only, one physical click
   forwards exactly one slot interaction
 

@@ -25,9 +25,9 @@ that runs inside your game.
 - It does not decide prices. Valuation runs server-side against the full
   sold-auction history. The client displays results and shows the work.
 
-## The two opt-in actions, disclosed plainly
+## The three opt-in actions, disclosed plainly
 
-Everything above holds in every mode. Two OPT-IN features, both off by
+Everything above holds in every mode. Three OPT-IN features, all off by
 default, go one deliberate step further, and you should know exactly what
 they do before enabling them:
 
@@ -42,6 +42,13 @@ they do before enabling them:
   auto-confirms, never times out into a purchase, and never overlays
   Hypixel's own final confirmation screen. Every forwarded click is
   written to a local audit log with the physical input that caused it.
+- **Recipe leg search** (assisted mode only, and its own separate toggle):
+  clicking an ingredient on the craft board sends one `/bz <item>` for a
+  bazaar leg or `/ahs <item>` for an auction one, chosen from the same field
+  that drew the row so the hint and the command cannot disagree. A leg we
+  cannot classify sends nothing. The quantity goes to your clipboard; the mod
+  never types into Hypixel's order sign. It shares one cooldown with assisted
+  open, so the two together still cannot exceed one action per cooldown.
 
 We call this design lower-risk, not "safe" — that word would be a lie in
 a rules-are-theirs-to-interpret game. Read the code and decide for

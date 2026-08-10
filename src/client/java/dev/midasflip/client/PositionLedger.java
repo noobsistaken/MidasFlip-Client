@@ -334,6 +334,44 @@ public final class PositionLedger {
      *  position matching by comp key (exact) or item id (fallback for
      *  legacy rows without keys). Null = the ledger never saw this buy —
      *  callers must then omit profit math rather than guess. */
+    /** Cost basis PER UNIT, or null.
+     *
+     *  <p>{@link #costBasisFor} returns what the whole position cost, which is
+     *  the total for its `count` units. Comparing that against the proceeds of
+     *  ONE listing mixes two different quantities: a 64-stack bought for 40M
+     *  against a single unit listed at 700k reported a 39.3M loss (review
+     *  2026-08-10). Per-unit is the only basis that can be compared to a
+     *  listing of arbitrary size. */
+    public synchronized Double costBasisPerUnitFor(String itemId, String compKey) {
+        Long total = costBasisFor(itemId, compKey);
+        if (total == null) {
+            return null;
+        }
+        int units = unitsOfCostBasis(itemId, compKey);
+        return units > 0 ? (double) total / units : null;
+    }
+
+    /** Units behind the position {@link #costBasisFor} just matched. Kept in
+     *  step with it deliberately: a count taken from a DIFFERENT row than the
+     *  price would be worse than no figure at all. */
+    private synchronized int unitsOfCostBasis(String itemId, String compKey) {
+        if (compKey != null && !compKey.isEmpty()) {
+            for (Position p : positions) {
+                if (!"sold".equals(p.state) && compKey.equals(p.compKey)
+                        && (!isPetKey(compKey) || hasCurrentPetKey(p))) {
+                    return Math.max(p.count, 1);
+                }
+            }
+        }
+        for (Position p : positions) {
+            if (!"sold".equals(p.state) && p.itemId != null && p.itemId.equals(itemId)
+                    && (p.compKey == null || p.compKey.isEmpty())) {
+                return Math.max(p.count, 1);
+            }
+        }
+        return 0;
+    }
+
     public synchronized Long costBasisFor(String itemId, String compKey) {
         // Exact modern identity first, regardless of file order. Legacy rows
         // can predate comp-key persistence and remain open after missed chat.

@@ -201,30 +201,54 @@ access and become paid in September.
 
 ## Gallery
 
-You have no screenshots yet, and this is the single biggest gap in the
-listing. Modrinth pages without images convert badly, and for a mod that makes
-claims about honesty, showing the actual UI is the argument.
+No screenshots yet, and this is the biggest remaining gap. Modrinth pages
+without images convert badly, and for a mod whose pitch is honesty, showing the
+actual UI IS the argument.
 
-Shoot these five, in this order of value:
+Shoot these five, in this order — image 1 is the thumbnail and carries the most
+weight.
 
-1. **The flip board** with real rows — the product in one image
-2. **A tooltip on a heavily modified item**, breakdown visible — this is the
-   differentiator nobody else has. Two things decide whether this shot works:
+**1. The flip board with real rows.** Press J. The product in one image: net
+profit after fees, hold time, confidence, populated. Wait for a board with
+several healthy rows; an empty or one-row board reads as "nothing to see".
 
-   - **Shoot it from your own INVENTORY, not the auction house.** Inside an AH
-     menu the mod can only read the item's lore text, so it counts enchants but
-     cannot see gems or hot potato books — it prints "menu view · enchants
-     counted, gems/HPB not visible" and you get far fewer rows. From your
-     inventory it reads the full NBT and prices everything.
-   - **Pick an item with MORE than four priced modifiers**, then hold SHIFT.
-     Under four, everything already fits on screen and SHIFT changes nothing,
-     so the screenshot shows no benefit
-3. **The comps peek** (hold TAB on a row) showing recent sales and the
-   rejected-outlier count — "shows its working" made concrete
-4. **The Plan tab** — the free/Gold table with `0s / 0s` on the speed row
-5. **The Safety pane** with STRICT selected — the claim, visible in the product
+**2. The tooltip breakdown, SHIFT held.** The differentiator — nobody else
+prices per modifier. Two conditions, both learned live on 2026-08-10:
 
-Caption each one. An uncaptioned screenshot of a dark UI reads as noise.
+  - Shoot from your own INVENTORY, not the auction house. Inside an AH menu the
+    mod reads lore text only, so it counts enchants but cannot see gems or hot
+    potato books; it prints "menu view · enchants counted, gems/HPB not visible"
+    and you get too few rows.
+  - Pick an item with MORE than four priced modifiers, or SHIFT changes nothing
+    because everything already fits (MAX_CONTRIB_LINES = 4).
+
+  Best if the shot also catches a "no value learned yet" line — that is the
+  honesty claim made literal.
+
+**3. The comps peek** (hold TAB on a row). Recent sales and the rejected-outlier
+count. "Shows its working" as a picture, and the answer to "why should I believe
+your number".
+
+**4. The safety pane, STRICT selected.** This audience's first question is "will
+this get me banned". A screenshot of the DEFAULT mode saying it sends nothing
+does more work than any paragraph.
+
+**5. A refusal.** "value unverified · confidence < finder gate", or "not enough
+comparables". Almost nobody screenshots their own limits, which is exactly why
+it lands: the numbers you DO get are credible because this one was withheld.
+
+Deliberately NOT the Plan/pricing tab — a price table is a weak gallery image
+and cold for a free launch.
+
+### Before uploading any image
+
+**Check for credentials.** No shot may contain the six-character PAIRING CODE
+from the connect screen, or an API key from the dashboard. Both are live
+credentials and a gallery image is permanent. IGN and coin balance are fine.
+
+**Caption every one.** An uncaptioned dark UI reads as noise. One line each,
+e.g. "Every estimate carries its evidence: comp count, confidence, rejected
+outliers."
 
 ---
 

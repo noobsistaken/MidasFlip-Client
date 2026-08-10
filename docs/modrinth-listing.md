@@ -59,6 +59,11 @@ ever leaves this mod is the one you physically made:
   clipboard and you paste.
 - **ASSISTED mode**, which is off until you turn it on, sends `/viewauction`
   when you press the open key. One keypress, one command.
+- **Recipe leg search** is off by default behind its own separate toggle. A
+  click on a craft ingredient sends one `/bz <item>` or `/ahs <item>`, chosen
+  from the same field that drew the row so the hint and the command cannot
+  disagree. A leg we cannot classify sends nothing. It shares one cooldown
+  with assisted open.
 - The **purchase confirm overlay** is off by default and only appears over an
   auction GUI this mod itself opened. A physical click in the buy zone
   forwards as exactly one slot interaction. It never auto-confirms and never

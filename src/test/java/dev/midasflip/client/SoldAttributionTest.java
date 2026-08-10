@@ -90,4 +90,59 @@ class SoldAttributionTest {
         assertNotEquals(oldMatched("Ancient Magma Lord Leggings", "MAGMA_LORD_LEGGINGS"),
                 matches("Ancient Magma Lord Leggings", "MAGMA_LORD_LEGGINGS"));
     }
+
+    // ---- the double-book, reproduced ------------------------------------
+    // Two open positions of one item in different BUCKETS. The chat line
+    // carries no bucket, so onSold used to pick the older row, write a false
+    // basis onto it, and leave the real position open. reconcileSold then
+    // matched the server's sale by comp_key, did not recognise the row chat
+    // had closed, and closed the real one too: ONE sale, TWO closed
+    // positions. Measured 2026-08-10 as a clean 100M and a 5-star 480M
+    // Hyperion sold once for 500M -> ledger reported 2 trades, +420M, for a
+    // real +20M.
+
+    /** Mirrors onSold's ambiguity test: does this chat name map to more than
+     *  one open bucket? */
+    private static boolean ambiguous(String chatName, String... compKeys) {
+        String want = SessionTracker.norm(chatName);
+        String wantBase = SessionTracker.normDereforged(chatName);
+        String seen = null;
+        boolean amb = false;
+        for (String k : compKeys) {
+            String ours = SessionTracker.norm(NameMap.pretty("HYPERION", k));
+            if (ours.isEmpty() || !(ours.equals(want) || ours.equals(wantBase))) {
+                continue;
+            }
+            if (seen == null) {
+                seen = k;
+            } else if (!seen.equals(k)) {
+                amb = true;
+            }
+        }
+        return amb;
+    }
+
+    @Test
+    void twoBucketsOfOneItemAreAmbiguousAndMustNotBeGuessed() {
+        assertEquals(true, ambiguous("Hyperion ✪✪✪✪✪",
+                "v1|HYPERION|s0|r0", "v1|HYPERION|s5|r1"),
+                "a clean and a starred Hyperion are indistinguishable from the chat name");
+    }
+
+    @Test
+    void oneBucketIsNotAmbiguous() {
+        assertEquals(false, ambiguous("Hyperion", "v1|HYPERION|s0|r0"));
+        // Two rows in the SAME bucket are fine: reconcileSold absorbs them by
+        // key, so closing either is correct.
+        assertEquals(false, ambiguous("Hyperion",
+                "v1|HYPERION|s0|r0", "v1|HYPERION|s0|r0"));
+    }
+
+    @Test
+    void starsCollapseInTheChatName_whichIsWhyTheGuardIsNeeded() {
+        // The root cause, pinned: norm() deliberately strips trailing stars,
+        // so the chat line for a 5-star item is identical to the clean one.
+        assertEquals(SessionTracker.norm("Hyperion"),
+                SessionTracker.norm("Hyperion ✪✪✪✪✪"));
+    }
 }

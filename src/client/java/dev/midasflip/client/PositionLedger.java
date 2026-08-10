@@ -161,23 +161,54 @@ public final class PositionLedger {
         // 2026-08-10).
         String want = SessionTracker.norm(displayName);
         String wantBase = SessionTracker.normDereforged(displayName);
+        // AMBIGUITY MUST NOT BE GUESSED THROUGH. The chat line carries no
+        // identity beyond the name, and norm() deliberately collapses stars
+        // and reforges, so two open positions of the same item in different
+        // BUCKETS (a clean one and a 5-star one) are indistinguishable here.
+        // Picking either wrote a false cost basis AND left the real position
+        // open — then reconcileSold, which matches on comp_key, failed to
+        // recognise the row chat had closed and closed the real one too. One
+        // sale, two closed positions: reproduced 2026-08-10 as a clean 100M
+        // and a 5-star 480M Hyperion, sold once for 500M, reporting 2 trades
+        // and +420M for a real +20M.
+        //
+        // So when the name maps to more than one bucket, close NOTHING and
+        // let reconcileSold do it: it matches on comp_key, carries the
+        // server's fee-true net, and lands within about a minute. A position
+        // that closes a minute late is a delay; one closed against the wrong
+        // basis is permanent, and there is no un-sell path.
         Position match = null;
         int bestScore = 0;
+        String seenKey = null;
+        boolean ambiguous = false;
         for (Position p : positions) {
             if ("sold".equals(p.state)) {
                 continue;
             }
             String ours = SessionTracker.norm(NameMap.pretty(p.itemId, p.compKey));
-            if (!ours.isEmpty() && (ours.equals(want) || ours.equals(wantBase))) {
-                int score = p.compKey != null && !p.compKey.isEmpty() ? 2 : 1;
-                if (score > bestScore
-                        || (score == bestScore && match != null && p.boughtAtMs < match.boughtAtMs)) {
-                    match = p;
-                    bestScore = score;
-                }
+            if (ours.isEmpty() || !(ours.equals(want) || ours.equals(wantBase))) {
+                continue;
+            }
+            String key = p.compKey == null ? "" : p.compKey;
+            if (seenKey == null) {
+                seenKey = key;
+            } else if (!seenKey.equals(key)) {
+                ambiguous = true;
+            }
+            // Prefer a bucketed row over a legacy id-only one, then FIFO. A
+            // stale unconfirmed row must never outrank a live one: past the
+            // 72h cutoff we can no longer claim the item is still held, so it
+            // is the worst candidate, not an equal one (review 2026-08-10).
+            long now = System.currentTimeMillis();
+            int score = (p.compKey != null && !p.compKey.isEmpty() ? 2 : 1)
+                    + (p.unconfirmed(now) ? -2 : 0);
+            if (score > bestScore
+                    || (score == bestScore && match != null && p.boughtAtMs < match.boughtAtMs)) {
+                match = p;
+                bestScore = score;
             }
         }
-        if (match == null) {
+        if (match == null || ambiguous) {
             return;
         }
         match.state = "sold";

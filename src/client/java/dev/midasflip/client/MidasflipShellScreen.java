@@ -32,6 +32,48 @@ public final class MidasflipShellScreen extends PhosScreen {
     public enum Tab { DASHBOARD, FLIPS, AUCTIONS, TRADES, VALUE, PLAN, FILTERS, ALERTS, DISPLAY, THEME, SAFETY, ABOUT }
 
     private static final int SIDEBAR_W = 92;
+
+    /** Fit a fixed column table into the width we actually got.
+     *
+     *  <p>Every board here was laid out against a ~590px root, which is what
+     *  1080p at GUI scale 3 gives. Minecraft's Auto scale picks 4 on plenty of
+     *  displays, and a user can pick 4 or 5 anywhere: at scale 4 the root is
+     *  480x270, the pane starts at SIDEBAR_W+16=108, and the usable width is
+     *  356px against a flips table whose last column is at 442. AGE and the
+     *  BUY/WATCH verdict chip were simply drawn past the edge of the
+     *  framebuffer and never seen. Nothing clamped or scaled, and the panes
+     *  had no idea (review 2026-08-10).
+     *
+     *  <p>Scales the whole table down proportionally rather than dropping
+     *  columns: a compressed table is readable and a missing verdict is not.
+     *  Never scales UP, so a wide window keeps the designed spacing.
+     *
+     *  <p>{@code reserve} is the room the last column's own content needs
+     *  beyond its origin (a chip, a right-aligned figure), because a column
+     *  ORIGIN that fits is not the same as a column that fits. */
+    static int[] fitCols(int[] cols, int avail, int reserve) {
+        int last = cols[cols.length - 1];
+        if (avail <= 0 || last + reserve <= avail) {
+            return cols;
+        }
+        // The reserve does NOT scale: a chip or a right-aligned figure needs
+        // the same pixels whatever the table does. So it comes off the budget
+        // FIRST and the origins share what is left. Scaling the whole width
+        // including the reserve leaves the last column short by exactly the
+        // amount the reserve failed to shrink, which is how the first cut of
+        // this still ran the verdict chip off-screen at scale 4.
+        int budget = avail - reserve;
+        if (budget <= 0) {
+            return cols;   // nothing sane to draw; leave it to the caller
+        }
+        double k = (double) budget / last;
+        int[] out = new int[cols.length];
+        for (int i = 0; i < cols.length; i++) {
+            out[i] = (int) Math.floor(cols[i] * k);
+        }
+        return out;
+    }
+
     private static final long[] PROFIT_STEPS =
             {0, 100_000, 250_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000};
     private static final long[] COST_STEPS =
@@ -344,7 +386,8 @@ public final class MidasflipShellScreen extends PhosScreen {
         }
         y += 14;
 
-        int[] cols = {0, 145, 228, 290, 333, 369, 405, 442};
+        // last column is the BUY/WATCH chip, ~40px wide
+        int[] cols = fitCols(new int[]{0, 145, 228, 290, 333, 369, 405, 442}, w, 44);
         // The ▾ marks the active sort key so "rank by" is legible on the board.
         String profitHead = config.sortMode == MidasflipConfig.SortMode.PROFIT ? "PROFIT ▾"
                 : config.sortMode == MidasflipConfig.SortMode.MARGIN ? "PROFIT%▾" : "PROFIT";
@@ -639,7 +682,7 @@ public final class MidasflipShellScreen extends PhosScreen {
             return;
         }
 
-        int[] cols = {0, 150, 205, 275, 345, 415};
+        int[] cols = fitCols(new int[]{0, 150, 205, 275, 345, 415}, w, 40);
         String[] heads = {"ITEM", "LEFT", "CURRENT", "NEXT", "MAX", "MARGIN"};
         for (int i = 0; i < heads.length; i++) {
             Phos.label(g, font, heads[i], x + cols[i], y);
@@ -889,7 +932,7 @@ public final class MidasflipShellScreen extends PhosScreen {
         if (proGateOrLoading(g, x, y, el, "/craft/evs", "value board")) {
             return;
         }
-        int[] cols = {0, 175, 225, 330, 385, 425};
+        int[] cols = fitCols(new int[]{0, 175, 225, 330, 385, 425}, w, 40);
         String[] heads = {"RECIPE", "TYPE", "COST → OUT", "NET", "TIME", "/SLOT·HR"};
         for (int i = 0; i < heads.length; i++) {
             Phos.label(g, font, heads[i], x + cols[i], y);
@@ -1084,7 +1127,7 @@ public final class MidasflipShellScreen extends PhosScreen {
         if (proGateOrLoading(g, x, y, el, "/bazaar/spreads", "bazaar spreads")) {
             return;
         }
-        int[] cols = {0, 150, 255, 325, 420};
+        int[] cols = fitCols(new int[]{0, 150, 255, 325, 420}, w, 40);
         String[] heads = {"PRODUCT", "BUY → SELL", "/UNIT", "/HOUR", "SPREAD"};
         for (int i = 0; i < heads.length; i++) {
             Phos.label(g, font, heads[i], x + cols[i], y);
@@ -1129,7 +1172,7 @@ public final class MidasflipShellScreen extends PhosScreen {
         if (proGateOrLoading(g, x, y, el, "/npc/flips", "npc flips")) {
             return;
         }
-        int[] cols = {0, 150, 255, 325, 385};
+        int[] cols = fitCols(new int[]{0, 150, 255, 325, 385}, w, 40);
         String[] heads = {"PRODUCT", "BUY → NPC", "/UNIT", "MARGIN", "/DAY"};
         for (int i = 0; i < heads.length; i++) {
             Phos.label(g, font, heads[i], x + cols[i], y);

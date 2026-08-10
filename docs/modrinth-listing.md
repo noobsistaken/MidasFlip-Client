@@ -217,10 +217,21 @@ claim you cannot back, in the one place where being wrong costs somebody their
 account. It also reads as more trustworthy, not less — the SkyBlock community
 has watched a lot of mods overclaim.
 
-**3. The jar you upload must be the one you tested.** Current build is
-`0dcb240a5f941621d43cf680d40d251e391e6e7e1c3c1bafaf89cf60a2eb61ac`. Verify with
-`shasum -a 256` before uploading, and upload the same file you have been
-running, not a rebuild.
+**3. The jar you upload must be the one you tested.** Upload
+**`~/Desktop/midasflip-0.1.0.jar`**, sha256
+
+```
+0e2ad413e9fbfccb428ab7ad23f3fbe6c67eafa241148fe11682dddf9a9fdc10
+```
+
+Verify with `shasum -a 256` before uploading. This is the same hash as the
+`build/libs` output and the asset already attached to the GitHub draft release,
+so all three channels serve identical bytes.
+
+**Do not upload `midasflip-smoketest.jar` or `midasflip-smoketest-0.1.0.jar`.**
+Both are on your Desktop, both are older test builds, and neither has the
+final fixes. The smoketest jar is `0dcb240a…`; if `shasum` prints anything
+starting with `0dcb` or `962b`, you have the wrong file.
 
 **4. The backend must be deployed before the jar is public.** The mod pairs
 against midasflip.com and there is no fallback path if the API does not

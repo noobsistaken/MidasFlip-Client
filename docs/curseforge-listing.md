@@ -90,9 +90,12 @@ speed tier and there never will be.
 
 Prices anything you hover. Point at an item anywhere, in your inventory, a
 chest, or the auction house, and get an estimate, how confident it is, and how
-many comparable sales it rests on. Hold SHIFT for the per-modifier breakdown:
-what the enchants, gems and hot potato books actually add, learned from real
-sales rather than book prices.
+many comparable sales it rests on.
+
+Breaks that price down by modifier. The tooltip shows what the enchants, gems
+and hot potato books actually add, learned from real sales rather than book
+prices. Hold SHIFT to expand the full list, including modifiers it recognises
+but has not priced yet.
 
 Shows its working. Every number comes with its evidence: comp count,
 confidence, how many outliers were rejected, whether the bucket looks
@@ -113,8 +116,11 @@ HONEST LIMITS
 Estimates are estimates. Markets move, thin buckets are noisy, and manipulated
 listings exist. The confidence number is there so you can discount accordingly.
 
-Everything is computed from public auction records. Nothing reads your
-inventory, your purse, or your account.
+Everything is computed from public auction records. What leaves your machine is
+the item you hover, so it can be priced, and your Minecraft name and UUID once
+you link an account. That is the whole list: your purse and bank are never
+read, nothing enumerates your inventory, and there is no bulk upload. Full
+detail at midasflip.com/privacy.
 
 A free account at midasflip.com is required, because that is how API keys are
 issued and abusers are banned. We never ask for your Minecraft password.

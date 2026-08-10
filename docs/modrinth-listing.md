@@ -85,9 +85,13 @@ speed tier and there never will be.
 
 **Prices anything you hover.** Point at an item anywhere (inventory, chest,
 auction house) and get an estimate, how confident it is, and how many
-comparable sales it rests on. Hold SHIFT for the per-modifier breakdown: what
-the enchants, gems and hot potato books actually add, learned from real sales
-rather than book prices.
+comparable sales it rests on.
+
+**Breaks that price down by modifier.** The tooltip shows what the enchants,
+gems and hot potato books actually add, learned from real sales rather than
+book prices. Hold SHIFT to expand the full list, including modifiers it
+recognises but has not priced yet — it says "no value learned yet" rather than
+printing a zero it cannot stand behind.
 
 **Shows its working.** Every number comes with the evidence: comp count,
 confidence, how many outliers were rejected, whether the bucket looks
@@ -107,8 +111,11 @@ suggestions.
 - Estimates are estimates. Markets move, thin buckets are noisy, and
   manipulated listings exist. The confidence number is there so you can
   discount accordingly.
-- Prices are computed from **public** auction records. Nothing reads your
-  inventory, your purse, or your account.
+- Prices are computed from **public** auction records. What leaves your machine
+  is the item you hover, so it can be priced, and your Minecraft name and UUID
+  once you link an account. That is the whole list: your purse and bank are
+  never read, nothing enumerates your inventory, and there is no bulk upload.
+  Full detail at [midasflip.com/privacy](https://midasflip.com/privacy).
 - A free account at midasflip.com is required, because that is how API keys
   are issued and abusers are banned. We never ask for your Minecraft password.
 
@@ -157,7 +164,8 @@ First public release.
 
 **Valuing items**
 - Hover any item for its estimate, confidence and comparable count
-- Hold SHIFT for the per-modifier breakdown, learned from real sales
+- Per-modifier breakdown on the tooltip, learned from real sales rather than
+  book prices; hold SHIFT to expand it
 - Bucket state on the header, so you can see your stars, recomb and scrolls
   were priced in
 - Lowest-BIN depth: the floor and the next one up
@@ -191,8 +199,11 @@ claims about honesty, showing the actual UI is the argument.
 Shoot these five, in this order of value:
 
 1. **The flip board** with real rows — the product in one image
-2. **A tooltip on a modified item**, SHIFT held, breakdown visible — this is
-   the differentiator nobody else has
+2. **A tooltip on a heavily modified item**, breakdown visible — this is the
+   differentiator nobody else has. Pick an item with MORE than four priced
+   modifiers and hold SHIFT, so the shot shows the expanded list rather than
+   the default four; on a lightly modded item SHIFT changes nothing because
+   everything already fits
 3. **The comps peek** (hold TAB on a row) showing recent sales and the
    rejected-outlier count — "shows its working" made concrete
 4. **The Plan tab** — the free/Gold table with `0s / 0s` on the speed row

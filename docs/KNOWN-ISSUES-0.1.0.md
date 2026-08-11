@@ -5,45 +5,47 @@ published. Nothing here blocks launch; each entry says why.
 
 ---
 
-## 1. Ledger key ignores recombobulation → overstated valuation (HIGH)
+## 1. loreRecombed misses recombobulation → sell overlay UNDERPRICES (HIGH)
 
-**Symptom.** In an auction menu, the tooltip prices a listing using the comp
-key of a DIFFERENT item you own. Owner hit it on a Juju Shortbow: the sell
-panel said list at 15.5M, the tooltip said 35.0M for the same bow on screen.
+**Corrected 2026-08-11.** An earlier version of this entry blamed the tooltip
+and had the direction backwards. The tooltip is RIGHT; the sell overlay is
+wrong, and the money risk is underpricing your own item, not overpaying for
+someone else's.
 
-**Cause.** `ItemTooltip.ledgerKeyFor` matches a hovered stack to an open
-ledger position on normalized NAME + STAR COUNT, then reuses that position's
-exact comp key. It never compares recombobulation. Holding a 5✪ **recombed**
-Juju and hovering a 5✪ **non-recombed** one satisfies both checks, so the
-listing is priced from the recombed bucket — `v1|JUJU_SHORTBOW|s5|r1` instead
-of the r0 bucket.
+**Symptom.** On a 5✪ recombed Juju Shortbow in Create BIN Auction, the sell
+overlay says "list at 15.5M · starred bucket · 150 comps" while the tooltip on
+the same item says "5✪ recombed · list at 35.0M · 146 comps". Following the
+overlay would list a 35M bow at 15.5M.
 
-Confirmed from the access log: the tooltip requested
-`/value/v1|JUJU_SHORTBOW|s5|r1` while the sell overlay requested
-`/price/by-name/Hasty+Juju+Shortbow+✪✪✪✪✪?stars=5&recomb=false`. The overlay
-was right; the item's lore reads LEGENDARY DUNGEON BOW, and a recombed Juju
-reads MYTHIC.
+**What the access log proves.** Two requests, same item, same second:
 
-**Why it is exactly the bug that was already fixed once.** The comment
-directly above the star guard documents the identical failure for stars,
-caught in review on 2026-08-05: "holding one 5-star and hovering a clean one
-priced the clean item from the 5-star bucket". Stars got `starsMatch`. Recomb
-is the same hole, one field over.
+    /value/v1|JUJU_SHORTBOW|s5|r1                                    -> tooltip
+    /price/by-name/Hasty+Juju+Shortbow+✪✪✪✪✪?stars=5&recomb=false    -> overlay
 
-**Fix (needs a new jar — cannot be done server-side).** Add a recomb guard
-beside `starsMatch`, using `SellOverlay.loreRecombed(stack)` — which is
-already proven to work, since the sell overlay derived `recomb=false`
-correctly for this same item. Refuse the ledger key when it disagrees, exactly
-as the star guard does. Consider extending to any other comp-key segment
-readable from lore.
+`/value/<comp_key>` is only reachable from `ItemTooltip.ledgerKeyFor`, which
+only runs when NBT is stripped — so Hypixel strips NBT even in the auction
+CREATE menu, and the tooltip correctly fell back to the owner's own ledger
+key, which carries `r1`. The overlay derived `recomb=false` from lore for the
+same stack. The item is genuinely recombed, so `SellOverlay.loreRecombed`
+returned a false negative.
 
-**Why it does not block launch.** `ledgerKeyFor` only matches OPEN POSITIONS.
-A fresh install has an empty ledger, so the path is unreachable for a new
-user. It requires already owning a near-identical item. The error direction is
-overstatement, so the risk is overpaying, and the sell panel — the surface you
-list from — stayed correct.
+**Do NOT "fix" this by guarding the ledger key on loreRecombed.** That was
+attempted and reverted the same night. Because loreRecombed is the unreliable
+half, using it as a guard rejects a CORRECT ledger key and drops the tooltip
+from 35.0M to the coarse 15.5M — inflicting the bug on the one surface that
+was still accurate. The dead `recombMatch` helper in ItemTooltip carries the
+same warning.
 
----
+**Fix.** Work out why loreRecombed returns false here first. Its rule is
+"decoration glyphs before the tier word on the bottom-most rarity line", and
+the item renders as `⊙ LEGENDARY DUNGEON BOW ✦` — a glyph IS present, so
+either the bottom-most non-empty lore line is not the one being matched, or
+dungeon items lay this line out differently from the gear it was written
+against. Needs in-game inspection of the raw lore lines, not more reasoning
+from screenshots.
+
+**Not a regression.** Present in 0.1.0 as shipped, and the tooltip beside it
+shows the correct number, so a user has the right figure on screen.
 
 ## 2. A 404 hides the tooltip block for five minutes (MEDIUM)
 

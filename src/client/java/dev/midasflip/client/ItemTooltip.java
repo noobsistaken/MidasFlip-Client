@@ -423,6 +423,36 @@ public final class ItemTooltip {
         return !m.find() || Integer.parseInt(m.group(1)) == visibleStars;
     }
 
+    /** Recombobulator segment of a comp key against what the LORE says.
+     *
+     *  Exactly the same hole starsMatch was added to close, one field over.
+     *  Name plus stars is not identity: holding a 5✪ RECOMBED Juju and
+     *  hovering a 5✪ non-recombed one matched on both, so the listing was
+     *  priced from the recombed bucket — 35.0M against the sell overlay's
+     *  honest 15.5M on the same bow (owner, 2026-08-11). The error direction
+     *  is overstatement, i.e. it can talk you into overpaying.
+     *
+     *  Recomb is readable from lore even when NBT is stripped, which is how
+     *  the sell overlay got it right on the same item, so there is no reason
+     *  to guess here.
+     *
+     *  A key with no r segment stays compatible with anything, matching
+     *  starsMatch: absence is not a claim. The dangerous direction is caught
+     *  because that key carries an explicit r1. */
+    // NOT WIRED UP. Wiring this to SellOverlay.loreRecombed would have made
+    // things WORSE: that function returned false for a genuinely recombed
+    // 5-star Juju (proved by the access log — the sell overlay asked for
+    // recomb=false while the ledger key said r1 and the full-NBT value was
+    // right). Using it as a guard would reject a CORRECT ledger key and drop
+    // the tooltip from 35.0M to the coarse 15.5M, i.e. cause the very bug it
+    // was meant to prevent, on the one surface that was still accurate.
+    // Fix loreRecombed FIRST, then reconsider this. 2026-08-11.
+    @SuppressWarnings("unused")
+    private static boolean recombMatch(String compKey, boolean visibleRecomb) {
+        var m = java.util.regex.Pattern.compile("\\|r([01])(?:\\||$)").matcher(compKey);
+        return !m.find() || ("1".equals(m.group(1)) == visibleRecomb);
+    }
+
     /** "estimated craft price" — what one unit costs to make, from
      *  /craft/costs: every recipe whose inputs we can price, each leg valued
      *  from OUR market data.

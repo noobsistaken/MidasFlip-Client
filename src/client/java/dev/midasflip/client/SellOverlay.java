@@ -692,6 +692,16 @@ public final class SellOverlay {
      * after Hypixel strips petInfo, so a pet match is accepted only when the
      * type/tier candidate is UNIQUE. Ambiguity returns null; item_id=PET is
      * never a fallback. */
+    /** Ledger row name against the hovered name, reforge-tolerant.
+     *
+     *  Exact comparison first so a genuinely reforge-named item keeps
+     *  matching itself; only then the both-sides-stripped comparison, which
+     *  is what lets a "Hasty Juju Shortbow" find its "Juju Shortbow" row. */
+    private static boolean nameMatches(String ledgerPretty, String want, String wantBase) {
+        String pretty = norm(ledgerPretty);
+        return pretty.equals(want) || norm(stripReforge(ledgerPretty)).equals(wantBase);
+    }
+
     private PositionLedger.Position findPosition(net.minecraft.world.item.ItemStack stack,
                                                   String skyblockId, String itemName,
                                                   Pets.PetName pet) {
@@ -720,6 +730,20 @@ public final class SellOverlay {
         PositionLedger.Position best = null;
         int bestScore = 0;
         String want = norm(itemName);
+        // cleanName deliberately leaves the reforge word on (see its javadoc),
+        // so a REFORGED item never matched its own ledger row: "Hasty Juju
+        // Shortbow" vs the ledger's "Juju Shortbow". The position was missed,
+        // useLedgerKey stayed false, and the panel fell back to the lore path
+        // — which cannot see recombobulation and priced a 5✪ RECOMBED bow as
+        // the plain starred bucket. Owner's own bow, bought at 23.7M, was
+        // offered "list at 15.5M" while the tooltip beside it correctly said
+        // 35.0M (2026-08-11). ItemTooltip.ledgerKeyFor already strips the
+        // reforge before its own match; this one did not.
+        //
+        // Both forms are compared, exact FIRST, so items whose real name
+        // begins with a reforge word ("Strong Dragon Helmet") still match
+        // themselves rather than collapsing onto "Dragon Helmet".
+        String wantBase = norm(stripReforge(itemName));
         int visibleStars = loreStars(effectiveName(stack).getString().replaceAll("§.", ""));
 
         for (PositionLedger.Position p : ledger.recent(200)) {
@@ -734,7 +758,7 @@ public final class SellOverlay {
                 // historical chat attribution missed their sale; one such
                 // 600k Token row beat the real recent 350k purchase.
                 score = p.compKey != null ? 4 : 2;
-            } else if (norm(NameMap.pretty(p.itemId, p.compKey)).equals(want)
+            } else if (nameMatches(NameMap.pretty(p.itemId, p.compKey), want, wantBase)
                     && starsCompatible(p.compKey, visibleStars)) {
                 // Create-auction menu copies can strip NBT. A modern bucketed
                 // row is still stronger evidence than a legacy name-only row.

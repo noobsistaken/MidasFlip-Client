@@ -44,8 +44,27 @@ dungeon items lay this line out differently from the gear it was written
 against. Needs in-game inspection of the raw lore lines, not more reasoning
 from screenshots.
 
-**Not a regression.** Present in 0.1.0 as shipped, and the tooltip beside it
-shows the correct number, so a user has the right figure on screen.
+**FIXED in 0.1.1** (2026-08-11), two changes:
+
+1. `SellOverlay.findPosition` now strips the reforge word before matching the
+   ledger row, so "Hasty Juju Shortbow" finds its "Juju Shortbow" position and
+   uses the exact comp key the finder recorded with full NBT. Exact match is
+   tried first, so "Strong Dragon Helmet" still matches itself.
+2. `loreRecombed` scans upward for the rarity line instead of giving up when
+   the bottom lore line is not one. Every auction view appends seller, price
+   and "Click to inspect!" below it, so recombobulation had been undetectable
+   in ANY menu — for items you own and items you do not.
+
+Verified live: panel and tooltip now agree at 35.0M / 39.3M / 45.0M, the
+bucket reads "recomb bucket", and the "you paid 23.7M" cost basis is back
+(it came from the same ledger match).
+
+Owner's note, and correct: for items you do NOT own this matters much less
+anyway, because the flip finder values from the full auction feed server-side.
+The tooltip is a browsing convenience; the board was never affected.
+
+Nine tests added. Neither path had any coverage before, which is how both
+reached a public build.
 
 ## 2. A 404 hides the tooltip block for five minutes (MEDIUM)
 

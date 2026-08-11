@@ -170,16 +170,36 @@ public final class SellOverlay {
         if (lore == null || lore.lines().isEmpty()) {
             return false;
         }
-        for (int i = lore.lines().size() - 1; i >= 0; i--) {
-            String line = lore.lines().get(i).getString().replaceAll("§.", "").strip();
+        java.util.List<String> raw = new java.util.ArrayList<>(lore.lines().size());
+        for (var line : lore.lines()) {
+            raw.add(line.getString());
+        }
+        return recombedFromLoreLines(raw);
+    }
+
+    /** Recombobulation from raw lore lines. Split out from {@link
+     *  #loreRecombed} so the rule is unit-testable without a Minecraft
+     *  ItemStack — it had no coverage at all, which is how the bug below
+     *  survived.
+     *
+     *  Scans upward for the RARITY line and keeps going past lines that are
+     *  not one. It used to bail out the moment the bottom-most non-empty line
+     *  failed to match, which is wrong everywhere Hypixel appends text BELOW
+     *  the rarity line — every auction view does: "Seller: …", "Buy it now:
+     *  …", "Ends in: …", "Click to inspect!". In those menus the function
+     *  therefore answered "not recombed" for everything, recombed or not.
+     *
+     *  Recombed is signalled by decoration glyphs BEFORE the tier word. */
+    static boolean recombedFromLoreLines(java.util.List<String> lines) {
+        for (int i = lines.size() - 1; i >= 0; i--) {
+            String line = lines.get(i).replaceAll("§.", "").strip();
             if (line.isEmpty()) {
                 continue;
             }
             java.util.regex.Matcher m = RARITY_LINE.matcher(line);
             if (!m.find()) {
-                return false; // bottom-most real line is not a rarity line
+                continue; // not the rarity line — keep looking upward
             }
-            // Recombed = decoration glyphs BEFORE the tier word.
             return m.start() > 0 && !Character.isLetter(line.charAt(0));
         }
         return false;

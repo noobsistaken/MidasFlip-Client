@@ -1,3 +1,15 @@
+> **NOT SHIPPING — decision 2026-08-12.** The owner chose to skip CurseForge:
+> the Hypixel SkyBlock community largely avoids it, so the slower review queue
+> buys reach that is not there. The landing page chip promising "CURSEFORGE ·
+> at launch" was removed the same day rather than left as a promise nobody
+> intended to keep.
+>
+> This file is kept, not deleted — if that call is ever revisited the listing
+> copy is ready. Two things to redo first: the category (my "Addons + Server
+> Utility" guess was never checked against their real picker, and `Server
+> Utility` is likely wrong for a client-only mod), and the jar reference below,
+> which predates 0.1.1.
+
 # CurseForge listing — ready to paste
 
 Companion to `modrinth-listing.md`. Same product, different rules: CurseForge

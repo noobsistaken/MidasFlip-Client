@@ -129,12 +129,19 @@ public final class ItemTooltip {
         // runs per hover and must not carry state between items.
         boolean goldShown = false;
         Pets.PetName pet = Pets.parse(stack.getHoverName());
-        Double petExp = pet == null ? null : ItemId.petExp(stack);
+        // Pet EXP, strongest source first — the SAME resolution the sell panel
+        // uses, so the two surfaces cannot land in different buckets for one
+        // pet. NBT carries candy/tier-boost state; lore EXP does not, so lore
+        // outranks only the level guess and never claims exact IDENTITY.
+        Double petExpNbt = pet == null ? null : ItemId.petExp(stack);
+        Double petExpLore = pet == null || petExpNbt != null
+                ? null : Pets.expFromLore(stack);
+        Double petExp = petExpNbt != null ? petExpNbt : petExpLore;
         String petType = pet == null ? null : ItemId.petType(stack);
         String petTier = pet == null ? null : ItemId.petTier(stack);
         String petSkin = pet == null ? null : ItemId.petSkin(stack);
         boolean petTierBoosted = pet != null && ItemId.petTierBoosted(stack);
-        boolean exactPetNbt = petExp != null && petType != null && petTier != null;
+        boolean exactPetNbt = petExpNbt != null && petType != null && petTier != null;
         String skyblockId = ItemId.of(stack);
         // Owner 2026-07-13: send the item's modifiers so the server prices
         // the FULL estimate, not the bare clean bucket. Full-NBT surfaces
@@ -364,6 +371,15 @@ public final class ItemTooltip {
             if (exact && petExp != null) {
                 lines.add(Component.literal("§8Lvl " + pet.level() + " · "
                         + compactPetExp(petExp) + " EXP · exact " + b + " bucket§r"));
+            } else if (petExpLore != null) {
+                // Bucket exact (lore EXP), identity partial: this menu stripped
+                // petInfo, so candy and tier-boost read as absent and BOTH of
+                // those defaults overstate the pet. Do not let "exact bucket"
+                // be read as "exact valuation".
+                lines.add(Component.literal("§8Lvl " + pet.level() + " · "
+                        + compactPetExp(petExpLore) + " EXP · " + b + " bucket§r"));
+                lines.add(Component.literal(
+                        "§emenu view — candy / tier-boost not visible§r"));
             } else {
                 lines.add(Component.literal("§eLvl " + pet.level() + " · approximate "
                         + b + " bucket · EXP unavailable§r"));

@@ -265,12 +265,21 @@ public final class SellOverlay {
         String skyblockId = ItemId.of(stack);
         String itemName = cleanName(nameComponent.getString().replaceAll("§.", "").strip());
         Pets.PetName pet = Pets.parse(nameComponent);
-        Double petExp = pet == null ? null : ItemId.petExp(stack);
+        // Pet EXP, strongest source first. The ORDER matters: NBT and the
+        // finder key both carry candy/tier-boost state; lore EXP does not.
+        // So lore may outrank only the LEVEL GUESS, never the finder key —
+        // which is why useLedgerPetKey below gates on petExpNbt, not petExp.
+        // Wiring lore in above the key would trade an exact identity for a
+        // partial one.
+        Double petExpNbt = pet == null ? null : ItemId.petExp(stack);
+        Double petExpLore = pet == null || petExpNbt != null
+                ? null : Pets.expFromLore(stack);
+        Double petExp = petExpNbt != null ? petExpNbt : petExpLore;
         String petType = pet == null ? null : ItemId.petType(stack);
         String petTier = pet == null ? null : ItemId.petTier(stack);
         String petSkin = pet == null ? null : ItemId.petSkin(stack);
         boolean petTierBoosted = pet != null && ItemId.petTierBoosted(stack);
-        boolean exactPetNbt = petExp != null && petType != null && petTier != null;
+        boolean exactPetNbt = petExpNbt != null && petType != null && petTier != null;
         PositionLedger.Position pos = findPosition(stack, skyblockId, itemName, pet);
         // When NBT is stripped we have no stars/recomb to derive a bucket
         // from, so the by-name path below resolves the CLEAN bucket and
@@ -283,7 +292,7 @@ public final class SellOverlay {
         // same item was worth 8M less, because it had priced the base item.
         boolean useLedgerKey = pet == null && skyblockId == null
                 && pos != null && pos.compKey != null && !pos.compKey.isEmpty();
-        boolean useLedgerPetKey = pet != null && petExp == null
+        boolean useLedgerPetKey = pet != null && petExpNbt == null
                 && PositionLedger.hasCurrentPetKey(pos);
 
         // Keep the hovered position's current estimate fresh while the
@@ -608,6 +617,14 @@ public final class SellOverlay {
             } else if (exactPetIdentity && petExp != null) {
                 note = "§8" + tier + " · Lvl " + pet.level() + " · "
                         + ItemTooltip.compactPetExp(petExp) + " EXP · exact " + bucket + spd + "§r";
+            } else if (petExpLore != null) {
+                // The BUCKET is exact (lore EXP), the IDENTITY is not: this
+                // menu hid candy and tier-boost, and both of those default to
+                // the pricier reading. Say which half we know. exactPetIdentity
+                // is still false, so the clipboard stays disarmed.
+                note = "§e" + tier + " · Lvl " + pet.level() + " · "
+                        + ItemTooltip.compactPetExp(petExpLore) + " EXP · " + bucket
+                        + " · candy/boost unseen · clipboard off§r";
             } else {
                 note = "§e" + tier + " · Lvl " + pet.level()
                         + " · approximate " + bucket + " · clipboard off§r";

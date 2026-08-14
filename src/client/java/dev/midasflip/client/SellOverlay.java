@@ -118,19 +118,27 @@ public final class SellOverlay {
     // A missing reforge just yields a graceful "no market data" (never a
     // wrong price). Extend as Hypixel adds reforges.
     private static final java.util.Set<String> REFORGES = java.util.Set.of(
-            "gentle", "odd", "fast", "fair", "epic", "sharp", "heroic", "spicy", "legendary",
-            "deadly", "fine", "grand", "hasty", "neat", "rapid", "unreal", "awkward", "rich",
-            "precise", "spiritual", "headstrong", "clean", "fierce", "heavy", "light", "mythic",
-            "pure", "smart", "titanic", "wise", "bizarre", "itchy", "ominous", "pleasant",
-            "pretty", "shiny", "simple", "strange", "vivid", "godly", "demonic", "forceful",
-            "hurtful", "keen", "strong", "superior", "unpleasant", "zealous", "ancient",
-            "necrotic", "spiked", "renowned", "cubic", "warped", "reflective", "undead",
-            "perfect", "fabled", "gilded", "suspicious", "bulky", "jaded", "dirty", "bloody",
-            "silky", "ridiculous", "bustling", "mossy", "festive", "submerged", "jerry",
-            "blessed", "bountiful", "fruitful", "magnetic", "refined", "stellar", "fleet",
-            "mithraic", "auspicious", "treacherous", "dimensional", "waxed", "glistening",
-            "toil", "moil", "blooming", "rooted", "snowy", "salty", "lucky", "stiff", "chomp",
-            "pitchin", "fanged", "loving", "withered", "coldfusion");
+            "ambered", "ancient", "astute", "auspicious", "awkward", "beady", "bizarre",
+            "blazing", "blended", "blessed", "bloodshot", "bloody", "blooming", "bountiful",
+            "brilliant", "bulky", "bustling", "buzzing", "calcified", "candied", "chomp",
+            "clean", "coldfusion", "colossal", "cubic", "deadly", "demonic", "dimensional",
+            "dirty", "earthy", "empowered", "epic", "erudite", "excellent", "fabled", "fair",
+            "fanged", "fast", "festive", "fierce", "fine", "fleet", "forceful", "fortified",
+            "fortunate", "fruitful", "gentle", "geometric", "giant", "gilded", "glacial",
+            "glistening", "godly", "grand", "great", "groovy", "hasty", "headstrong", "heated",
+            "heavy", "hefty", "heroic", "honored", "hurtful", "itchy", "jaded", "jerry", "keen",
+            "legendary", "light", "loving", "lucky", "lumberjack", "lunar", "lush", "lustrous",
+            "magnetic", "mantid", "menacing", "mithraic", "moil", "moonglade", "mossy",
+            "mythic", "neat", "necrotic", "odd", "ominous", "overpriced", "peasant", "perfect",
+            "pitchin", "pleasant", "precise", "pretty", "prospector", "pure", "rapid",
+            "refined", "reflective", "reinforced", "renowned", "rich", "ridiculous", "robust",
+            "rooted", "royal", "rugged", "salty", "scraped", "shaded", "sharp", "shiny",
+            "silky", "simple", "smart", "snowy", "soft", "spicy", "spiked", "spiritual",
+            "squeaky", "stained", "stellar", "sticky", "stiff", "strange", "strengthened",
+            "strong", "sturdy", "submerged", "sunny", "superior", "suspicious", "sweet",
+            "thorny", "titanic", "toil", "trashy", "treacherous", "undead", "unpleasant",
+            "unreal", "unyielding", "vivid", "warped", "waxed", "wise", "withered", "zealous",
+            "zooming");
 
     /** Item name as the API knows it: strips the auction slot's "6x " stack-
      *  count prefix and any leading non-letter symbols (star/ability glyphs)

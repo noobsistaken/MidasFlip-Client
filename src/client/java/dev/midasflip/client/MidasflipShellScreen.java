@@ -219,7 +219,7 @@ public final class MidasflipShellScreen extends PhosScreen {
         // recolors it live. No § codes — they override the color param.
         Phos.text(g, font, "MIDAS", 10, 12, Phos.CREAM);
         Phos.text(g, font, "FLIP", 10 + font.width("MIDAS"), 12, Phos.ACCENT);
-        Phos.text(g, font, "0.1.0 · fabric", 10, 24, Phos.FAINT);
+        Phos.text(g, font, Midasflip.version() + " · fabric", 10, 24, Phos.FAINT);
 
         int y = 44;
         for (Tab t : Tab.values()) {

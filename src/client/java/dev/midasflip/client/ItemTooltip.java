@@ -142,6 +142,20 @@ public final class ItemTooltip {
         String petSkin = pet == null ? null : ItemId.petSkin(stack);
         boolean petTierBoosted = pet != null && ItemId.petTierBoosted(stack);
         boolean exactPetNbt = petExpNbt != null && petType != null && petTier != null;
+        // Tier + displayed level bracket the total EXP between cumulative(L)
+        // and cumulative(L+1). When both ends land in the same bucket that
+        // bucket is CERTAIN — no guess involved. When they do not, there is no
+        // honest bucket to ask for, and asking for the wrong one is not a
+        // small error: a Lvl 88 legendary Wolf sent as x1 priced at 5.0M
+        // against a real x2 value of 16.9M (owner, 2026-08-14).
+        String petLevelBucket = pet == null || petExp != null ? null
+                : Pets.bucketFromLevel(
+                    petTier != null ? Pets.effectiveTier(petTier, petTierBoosted) : pet.tier(),
+                    pet.level(), petType != null ? petType : pet.type());
+        // Nothing to ask with. The endpoint DEFAULTS exp_bucket to x0 — the
+        // cheapest bucket in the game — so omitting it would lowball silently
+        // rather than fail. Say we do not know instead.
+        boolean petBucketUnknown = pet != null && petExp == null && petLevelBucket == null;
         String skyblockId = ItemId.of(stack);
         // Owner 2026-07-13: send the item's modifiers so the server prices
         // the FULL estimate, not the bare clean bucket. Full-NBT surfaces
@@ -149,6 +163,17 @@ public final class ItemTooltip {
         // the lore-only menu path recovers ENCHANTS ONLY (see LoreMods).
         boolean lorePath = false; // NBT stripped → atoms are partial
         String path;
+        if (petBucketUnknown) {
+            // Refuse rather than price the wrong pet. Silence would read as a
+            // broken feature (KNOWN-ISSUES 0.1.0 #2), so name the reason and
+            // the one action that fixes it.
+            lines.add(Component.literal(""));
+            lines.add(Component.literal("§6§lMidasFlip §8· pet"));
+            lines.add(Component.literal("§evalue unverified §8· EXP not readable here§r"));
+            lines.add(Component.literal("§8Lvl " + pet.level()
+                    + " spans two price buckets — hover it in your inventory§r"));
+            return;
+        }
         // Same bucket-mismatch fix as the sell overlay (owner 2026-07-30).
         // In an auction menu Hypixel strips ExtraAttributes, so there are no
         // stars or recomb to derive from and the by-name path below resolves
@@ -177,7 +202,7 @@ public final class ItemTooltip {
                     + "?pet=true"
                     + (petExp != null
                         ? "&pet_exp=" + Double.toString(petExp)
-                        : "&exp_bucket=" + Pets.approximateExpBucket(pet.level(), config))
+                        : "&exp_bucket=" + petLevelBucket)
                     + (ItemId.petCandied(stack) ? "&candied=true" : "")
                     + (petTierBoosted ? "&tier_boosted=true" : "")
                     + "&tier=" + (petTier != null
@@ -365,7 +390,7 @@ public final class ItemTooltip {
             // falls back to the approximation when the field is absent,
             // which is exactly what the old has() check did.
             String served = GoldFields.optStr(resp, "exp_bucket");
-            String b = served != null ? served : Pets.approximateExpBucket(pet.level(), config);
+            String b = served != null ? served : petLevelBucket;
             boolean exact = "nbt_exact".equals(GoldFields.optStr(resp, "pet_identity_source"))
                     && exactPetNbt;
             if (exact && petExp != null) {
@@ -381,8 +406,16 @@ public final class ItemTooltip {
                 lines.add(Component.literal(
                         "§emenu view — candy / tier-boost not visible§r"));
             } else {
-                lines.add(Component.literal("§eLvl " + pet.level() + " · approximate "
-                        + b + " bucket · EXP unavailable§r"));
+                // Level-derived: tier + level bracket the EXP inside ONE
+                // bucket, so this is exact for bucketing even though the raw
+                // number is unknown. It is no longer "approximate" — that word
+                // belonged to the tier-blind guess this replaced. Candy and
+                // tier-boost are still unreadable in a menu, and both defaults
+                // overstate, so that caveat stays.
+                lines.add(Component.literal("§8Lvl " + pet.level() + " · " + b
+                        + " bucket from level§r"));
+                lines.add(Component.literal(
+                        "§emenu view — candy / tier-boost not visible§r"));
             }
         }
     }

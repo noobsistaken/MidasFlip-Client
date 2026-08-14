@@ -280,6 +280,15 @@ public final class SellOverlay {
         String petSkin = pet == null ? null : ItemId.petSkin(stack);
         boolean petTierBoosted = pet != null && ItemId.petTierBoosted(stack);
         boolean exactPetNbt = petExpNbt != null && petType != null && petTier != null;
+        // Tier + displayed level bracket the total EXP; when both ends land in
+        // the same bucket that bucket is CERTAIN. Null means the level cannot
+        // decide it, and there is then no honest bucket to ask for — the
+        // endpoint defaults exp_bucket to x0, the cheapest in the game, so a
+        // missing bucket lowballs silently instead of failing loudly.
+        String petLevelBucket = pet == null || petExp != null ? null
+                : Pets.bucketFromLevel(
+                    petTier != null ? Pets.effectiveTier(petTier, petTierBoosted) : pet.tier(),
+                    pet.level(), petType != null ? petType : pet.type());
         PositionLedger.Position pos = findPosition(stack, skyblockId, itemName, pet);
         // When NBT is stripped we have no stars/recomb to derive a bucket
         // from, so the by-name path below resolves the CLEAN bucket and
@@ -292,8 +301,11 @@ public final class SellOverlay {
         // same item was worth 8M less, because it had priced the base item.
         boolean useLedgerKey = pet == null && skyblockId == null
                 && pos != null && pos.compKey != null && !pos.compKey.isEmpty();
-        boolean useLedgerPetKey = pet != null && petExpNbt == null
-                && PositionLedger.hasCurrentPetKey(pos);
+        // The AGREED key, not this position's: pricing only needs the key, and
+        // requiring a unique position threw it away whenever you held two of
+        // the same pet (see petAgreedKey).
+        String ledgerPetKey = pet != null && petExpNbt == null ? petAgreedKey(pet) : null;
+        boolean useLedgerPetKey = ledgerPetKey != null;
 
         // Keep the hovered position's current estimate fresh while the
         // panel is up (per-frame call, but api.get is TTL-cached — at
@@ -372,6 +384,18 @@ public final class SellOverlay {
         // exact atoms; the lore-only menu path recovers ENCHANTS ONLY.
         boolean lorePath = false;
         String path;
+        if (pet != null && petExp == null && petLevelBucket == null && !useLedgerPetKey) {
+            // No exact EXP, no finder key, and the level cannot decide the
+            // bucket. Every remaining option is a guess, and this panel arms a
+            // one-keystroke paste into a BIN sign — the one surface where a
+            // wrong number becomes a real listing. Refuse.
+            Phos.text(g, font, "§evalue unverified§r", cx, cy, Phos.YELLOW);
+            Phos.text(g, font, "§8Lvl " + pet.level() + " spans two price buckets§r",
+                    cx, cy + 11, Phos.FAINT);
+            Phos.text(g, font, "§8open it from your inventory for an exact price§r",
+                    cx, cy + 22, Phos.FAINT);
+            return;
+        }
         if (useLedgerKey) {
             path = "/value/" + URLEncoder.encode(pos.compKey, StandardCharsets.UTF_8);
         } else if (pet != null) {
@@ -381,7 +405,7 @@ public final class SellOverlay {
             // stripped NBT, a current versioned finder key is the only exact
             // fallback; otherwise the legacy level bucket is display-only.
             if (useLedgerPetKey) {
-                path = "/value/" + URLEncoder.encode(pos.compKey, StandardCharsets.UTF_8);
+                path = "/value/" + URLEncoder.encode(ledgerPetKey, StandardCharsets.UTF_8);
             } else {
                 String mods = ItemId.modAtoms(stack); // pet held item, if any
                 path = (petType != null ? "/price/by-id/" : "/price/by-name/")
@@ -390,7 +414,7 @@ public final class SellOverlay {
                         + "?pet=true"
                         + (petExp != null
                             ? "&pet_exp=" + Double.toString(petExp)
-                            : "&exp_bucket=" + Pets.approximateExpBucket(pet.level(), config))
+                            : "&exp_bucket=" + petLevelBucket)
                         + (ItemId.petCandied(stack) ? "&candied=true" : "")
                         + (petTierBoosted ? "&tier_boosted=true" : "")
                         + "&tier=" + (petTier != null
@@ -626,8 +650,13 @@ public final class SellOverlay {
                         + ItemTooltip.compactPetExp(petExpLore) + " EXP · " + bucket
                         + " · candy/boost unseen · clipboard off§r";
             } else {
-                note = "§e" + tier + " · Lvl " + pet.level()
-                        + " · approximate " + bucket + " · clipboard off§r";
+                // Level-derived and CERTAIN for bucketing (tier + level
+                // bracket the EXP inside one bucket) — no longer the
+                // "approximate" of the tier-blind guess. Candy and tier-boost
+                // are still unreadable here and both overstate, so the
+                // clipboard stays disarmed via exactPetIdentity.
+                note = "§e" + tier + " · Lvl " + pet.level() + " · " + bucket
+                        + " from level · candy/boost unseen · clipboard off§r";
             }
         } else {
             note = gearNote(resp, est, spd);
@@ -739,29 +768,68 @@ public final class SellOverlay {
         return pretty.equals(want) || norm(stripReforge(ledgerPretty)).equals(wantBase);
     }
 
+    /** Open ledger rows whose comp key matches this pet's DISPLAY identity
+     *  (type + tier, the only two things a stripped menu shows). */
+    private java.util.List<PositionLedger.Position> petCandidates(Pets.PetName pet) {
+        java.util.List<PositionLedger.Position> out = new java.util.ArrayList<>();
+        String type = norm(pet.type());
+        String tier = pet.tier().toUpperCase(Locale.ROOT);
+        for (PositionLedger.Position p : ledger.recent(200)) {
+            if ("sold".equals(p.state) || p.compKey == null) {
+                continue;
+            }
+            String[] parts = p.compKey.split("\\|");
+            if (parts.length < 5 || !"v1".equals(parts[0]) || !"PET".equals(parts[1])
+                    || !type.equals(parts[2])
+                    || (!tier.isEmpty() && !tier.equals(parts[3]))) {
+                continue;
+            }
+            out.add(p);
+        }
+        return out;
+    }
+
+    /** The finder's comp key for this pet when every matching open position
+     *  AGREES on it, else null.
+     *
+     *  <p>This used to fail closed on two matches, which threw away certain
+     *  information: holding two of the same pet is ordinary for a flipper, and
+     *  when both receipts carry the same key we do not need to know WHICH one
+     *  is in hand — the key is the same either way. Refusing dropped the only
+     *  exact identity a stripped menu has and handed pricing to a level guess.
+     *  Owner incident 2026-08-14: two open WOLF|LEGENDARY|x2 rows (one of them
+     *  a ghost that had actually sold) collided, the key was discarded, and
+     *  the pet priced from bucket x1 at 5.0M against a real 16.9M.
+     *
+     *  <p>Disagreement still fails closed — one x2 and one x3, or one candied,
+     *  are different items and picking one would be a coin flip on a money
+     *  surface. Legacy rows predating the current pet-key version are excluded
+     *  entirely: their identity may predate the c1/tb splits. */
+    private String petAgreedKey(Pets.PetName pet) {
+        String agreed = null;
+        for (PositionLedger.Position p : petCandidates(pet)) {
+            if (!PositionLedger.hasCurrentPetKey(p)) {
+                return null; // a stale-schema row in the mix: refuse
+            }
+            if (agreed == null) {
+                agreed = p.compKey;
+            } else if (!agreed.equals(p.compKey)) {
+                return null; // genuine disagreement
+            }
+        }
+        return agreed;
+    }
+
     private PositionLedger.Position findPosition(net.minecraft.world.item.ItemStack stack,
                                                   String skyblockId, String itemName,
                                                   Pets.PetName pet) {
         if (pet != null) {
-            PositionLedger.Position only = null;
-            String type = norm(pet.type());
-            String tier = pet.tier().toUpperCase(Locale.ROOT);
-            for (PositionLedger.Position p : ledger.recent(200)) {
-                if ("sold".equals(p.state) || p.compKey == null) {
-                    continue;
-                }
-                String[] parts = p.compKey.split("\\|");
-                if (parts.length < 5 || !"v1".equals(parts[0]) || !"PET".equals(parts[1])
-                        || !type.equals(parts[2])
-                        || (!tier.isEmpty() && !tier.equals(parts[3]))) {
-                    continue;
-                }
-                if (only != null) {
-                    return null; // two display-identical receipts: fail closed
-                }
-                only = p;
-            }
-            return only;
+            // COST BASIS needs to know WHICH pet this is, so two candidates
+            // still fail closed here — "you paid" must never show someone
+            // else's receipt. Pricing asks a weaker question and is served by
+            // petAgreedKey below.
+            java.util.List<PositionLedger.Position> c = petCandidates(pet);
+            return c.size() == 1 ? c.get(0) : null;
         }
 
         PositionLedger.Position best = null;

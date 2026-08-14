@@ -48,18 +48,150 @@ public final class Pets {
      * the old level heuristic. Callers must label this approximate and keep
      * action conveniences such as clipboard pricing disarmed.
      *
-     * <p>NOTE: this cannot return x3 (30M+ EXP), and that is not an
-     * oversight. Display level genuinely does not determine the bucket at the
-     * top of the curve: a legendary hits Lvl 100 at ~25.4M EXP (x2) and keeps
-     * climbing past 30M (x3) with overflow feeding, showing the same
-     * "[Lvl 100]" name the whole way. Guessing x3 here would be as wrong as
-     * guessing x2. {@link #expFromLore} removes the guess instead of
-     * refining it. */
+     * @deprecated superseded by {@link #bucketFromLevel}, which is exact
+     *     wherever it answers at all. This is TIER-BLIND, and tier is the
+     *     dominant term: level 88 is 10,032,830 EXP for a legendary (x2) and
+     *     2,380,385 for a common (x1). It also gets the legendary boundaries
+     *     wrong in both directions — it calls 57-59 x0 (really x1) and 88-89
+     *     x1 (really x2), which underpriced a Lvl 88 Wolf at 5.0M against a
+     *     real x2 value of 16.9M (owner, 2026-08-14). Retained only so an
+     *     older config path keeps compiling; do not add callers.
+     */
+    @Deprecated
     public static String approximateExpBucket(int level, MidasflipConfig config) {
         if (config.petLevelRule) {
             return level < config.petLevelPremiumFloor ? "x0" : "x2";
         }
         return level < 60 ? "x0" : level < 90 ? "x1" : "x2";
+    }
+
+    // ---- Hypixel's pet EXP ladder -----------------------------------------
+    //
+    // One shared per-level cost array; RARITY SELECTS A STARTING OFFSET into
+    // it. Verified against two independent open-source implementations that
+    // agree byte-for-byte (NotEnoughUpdates-REPO constants/pets.json and
+    // SkyCrypt src/constants/pets.js), and anchored on a live screenshot: a
+    // legendary's level 88 -> 89 costs PET_LEVELS[107] = 791,700, exactly the
+    // "324,577.4/791.7k" the game printed.
+    //
+    // PetLevelsTest reproduces all six published level-100 totals from this
+    // array. That is the point of those assertions: a mistyped digit anywhere
+    // in 119 numbers fails a test instead of silently mispricing a pet.
+
+    /** Cost of the level-up at index i; a pet of rarity offset O pays
+     *  PET_LEVELS[O + L - 1] to go from level L to L+1. 119 entries =
+     *  20 (max offset) + 99 (level-ups to 100). */
+    private static final int[] PET_LEVELS = {
+        100, 110, 120, 130, 145, 160, 175, 190, 210, 230,
+        250, 275, 300, 330, 360, 400, 440, 490, 540, 600,
+        660, 730, 800, 880, 960, 1050, 1150, 1260, 1380, 1510,
+        1650, 1800, 1960, 2130, 2310, 2500, 2700, 2920, 3160, 3420,
+        3700, 4000, 4350, 4750, 5200, 5700, 6300, 7000, 7800, 8700,
+        9700, 10800, 12000, 13300, 14700, 16200, 17800, 19500, 21300, 23200,
+        25200, 27400, 29800, 32400, 35200, 38200, 41400, 44800, 48400, 52200,
+        56200, 60400, 64800, 69400, 74200, 79200, 84700, 90700, 97200, 104200,
+        111700, 119700, 128200, 137200, 146700, 156700, 167700, 179700, 192700, 206700,
+        221700, 237700, 254700, 272700, 291700, 311700, 333700, 357700, 383700, 411700,
+        441700, 476700, 516700, 561700, 611700, 666700, 726700, 791700, 861700, 936700,
+        1016700, 1101700, 1191700, 1286700, 1386700, 1496700, 1616700, 1746700, 1886700,
+    };
+
+    /** Levels 101-200 on the 200-level dragons cost a flat amount each. */
+    private static final long DRAGON_TAIL_COST = 1_886_700L;
+    private static final int DRAGON_MAX_LEVEL = 200;
+
+    /** Rarity -> starting offset into {@link #PET_LEVELS}. MYTHIC shares
+     *  LEGENDARY's offset, which is why a mythic and a legendary at the same
+     *  level hold identical EXP. */
+    private static int rarityOffset(String tier) {
+        return switch (tier == null ? "" : tier.toUpperCase(Locale.ROOT)) {
+            case "COMMON" -> 0;
+            case "UNCOMMON" -> 6;
+            case "RARE" -> 11;
+            case "EPIC" -> 16;
+            case "LEGENDARY", "MYTHIC" -> 20;
+            default -> -1; // indeterminate tier: refuse rather than assume
+        };
+    }
+
+    private static boolean isDragon(String petType) {
+        String t = petType == null ? "" : petType.toUpperCase(Locale.ROOT).replace(' ', '_');
+        return t.endsWith("DRAGON") && (t.contains("GOLDEN") || t.contains("JADE") || t.contains("ROSE"));
+    }
+
+    static int maxLevel(String petType) {
+        return isDragon(petType) ? DRAGON_MAX_LEVEL : 100;
+    }
+
+    /** Total EXP accumulated on reaching {@code level}; -1 when the tier is
+     *  indeterminate or the level is out of range. Level 1 costs nothing. */
+    static long cumulativeExp(String tier, int level, String petType) {
+        int off = rarityOffset(tier);
+        if (off < 0 || level < 1 || level > maxLevel(petType)) {
+            return -1;
+        }
+        long total = 0;
+        int ladder = Math.min(level, 100);
+        for (int k = 1; k < ladder; k++) {
+            total += PET_LEVELS[off + k - 1];
+        }
+        if (level > 100) { // dragon tail
+            total += (long) (level - 100) * DRAGON_TAIL_COST;
+        }
+        return total;
+    }
+
+    /** The comp bucket implied by tier + displayed level ALONE, or null when
+     *  the level cannot decide it.
+     *
+     *  <p>A displayed level pins the total EXP to the half-open interval
+     *  [cumulative(level), cumulative(level+1)). When BOTH ends fall in the
+     *  same bucket the answer is certain and needs nothing else — which is the
+     *  ordinary case, and is why this replaces a guess rather than refining
+     *  one. Null means genuinely undecidable, and callers must degrade rather
+     *  than substitute a guess:
+     *
+     *  <ul>
+     *    <li>the level straddles a boundary (legendary 56 and 87, epic 60 and
+     *        91, rare 65 and 96) — the interval spans two buckets;
+     *    <li>the pet is at MAX LEVEL — the ladder is exhausted but feeding
+     *        continues, so the total is unbounded above. The owner's Lvl 100
+     *        Tarantula held 36.9M against a 25.35M ladder. Read the printed
+     *        total ({@link #expFromLore}) instead;
+     *    <li>the tier could not be read from the name colour.
+     *  </ul>
+     */
+    public static String bucketFromLevel(String tier, int level, String petType) {
+        long low = cumulativeExp(tier, level, petType);
+        if (low < 0) {
+            return null;
+        }
+        if (level >= maxLevel(petType)) {
+            return null; // overflow feeding: unbounded above, cannot decide
+        }
+        long highExclusive = cumulativeExp(tier, level + 1, petType);
+        if (highExclusive < 0) {
+            return null;
+        }
+        String lowBucket = bucketOf(low);
+        String highBucket = bucketOf(highExclusive - 1);
+        return lowBucket.equals(highBucket) ? lowBucket : null;
+    }
+
+    /** The collector's EXP thresholds. Kept identical to the server's
+     *  pet_exp_bucket; the server stays authoritative whenever we can send it
+     *  a real number, and this is only used to decide what we already know. */
+    static String bucketOf(long exp) {
+        if (exp < 1_000_000L) {
+            return "x0";
+        }
+        if (exp < 10_000_000L) {
+            return "x1";
+        }
+        if (exp < 30_000_000L) {
+            return "x2";
+        }
+        return "x3";
     }
 
     /** Exact pet EXP from the strongest source available: petInfo NBT first
